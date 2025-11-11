@@ -1,176 +1,371 @@
-# Time Series Library (TSLib)
-TSLib is an open-source library for deep learning researchers, especially for deep time series analysis.
+# RITMO: Tokenización de Series Temporales mediante Hidden Markov Models
 
-We provide a neat code base to evaluate advanced deep time series models or develop your model, which covers five mainstream tasks: **long- and short-term forecasting, imputation, anomaly detection, and classification.**
+**Regímenes latentes mediante Inferencia Temporal con Markov Oculto para tokenización y forecasting de series temporales**
 
-:triangular_flag_on_post:**News** (2025.10) Given the recent confusion among researchers regarding minor improvements on standard benchmarks, we propose the [[Accuracy Law]](https://arxiv.org/abs/2510.02729) to characterize the objectives of deep time series forecasting tasks, which can be used to identify saturated datasets.
+## Descripción del Proyecto
 
-:triangular_flag_on_post:**News** (2024.10) We have included [[TimeXer]](https://arxiv.org/abs/2402.19072), which defined a practical forecasting paradigm: Forecasting with Exogenous Variables. Considering both practicability and computation efficiency, we believe the new forecasting paradigm defined in TimeXer can be the "right" task for future research.
+Este repositorio contiene la implementación del Trabajo de Fin de Grado titulado "Tokenizar series temporales con técnicas existentes y contrastar resultados empleando estados ocultos de Markov". El proyecto investiga la aplicación de Hidden Markov Models (HMM) como mecanismo de tokenización probabilística para series temporales univariadas en el contexto de modelos transformer.
 
-:triangular_flag_on_post:**News** (2024.10) Our lab has open-sourced [[OpenLTM]](https://github.com/thuml/OpenLTM), which provides a distinct pretrain-finetuning paradigm compared to TSLib. If you are interested in Large Time Series Models, you may find this repository helpful.
+## Pregunta de Investigación
 
-:triangular_flag_on_post:**News** (2024.07) We wrote a comprehensive survey of [[Deep Time Series Models]](https://arxiv.org/abs/2407.13278) with a rigorous benchmark based on TSLib. In this paper, we summarized the design principles of current time series models supported by insightful experiments, hoping to be helpful to future research.
+¿Pueden los estados ocultos de un Hidden Markov Model actuar como embeddings latentes estructurados que capturen dependencias temporales y regímenes estadísticos de manera más efectiva que las técnicas determinísticas actuales de tokenización para la predicción de series temporales univariadas?
 
-:triangular_flag_on_post:**News** (2024.04) Many thanks for the great work from [frecklebars](https://github.com/thuml/Time-Series-Library/pull/378). The famous sequential model [Mamba](https://arxiv.org/abs/2312.00752) has been included in our library. See [this file](https://github.com/thuml/Time-Series-Library/blob/main/models/Mamba.py), where you need to install `mamba_ssm` with pip at first.
+## Motivación
 
-:triangular_flag_on_post:**News** (2024.03) Given the inconsistent look-back length of various papers, we split the long-term forecasting in the leaderboard into two categories: Look-Back-96 and Look-Back-Searching. We recommend researchers read [TimeMixer](https://openreview.net/pdf?id=7oLshfEIC2), which includes both look-back length settings in experiments for scientific rigor.
+La aplicación de arquitecturas transformer a series temporales enfrenta un desafío fundamental: las series temporales son inherentemente continuas, mientras que los transformers operan sobre secuencias discretas de tokens. Esta disparidad requiere una transformación previa denominada tokenización, que constituye un cuello de botella crítico en el pipeline completo.
 
-:triangular_flag_on_post:**News** (2023.10) We add an implementation to [iTransformer](https://arxiv.org/abs/2310.06625), which is the state-of-the-art model for long-term forecasting. The official code and complete scripts of iTransformer can be found [here](https://github.com/thuml/iTransformer).
+Los métodos existentes (discretización, patching, descomposición, foundation models) presentan limitaciones inherentes:
+- Discretización: granularidad fija sin adaptación a variabilidad intrínseca
+- Patching: segmentación arbitraria que puede fragmentar patrones coherentes
+- Foundation models: embeddings implícitos sin significado estadístico explícito
 
-:triangular_flag_on_post:**News** (2023.09) We added a detailed [tutorial](https://github.com/thuml/Time-Series-Library/blob/main/tutorial/TimesNet_tutorial.ipynb) for [TimesNet](https://openreview.net/pdf?id=ju_Uqw384Oq) and this library, which is quite friendly to beginners of deep time series analysis.
+En contraposición, los Hidden Markov Models ofrecen estructura probabilística que modela explícitamente transiciones entre estados ocultos mediante cadenas de Markov de primer orden, proporcionando representaciones más ricas que métodos determinísticos actuales.
 
-:triangular_flag_on_post:**News** (2023.02) We release the TSlib as a comprehensive benchmark and code base for time series models, which is extended from our previous GitHub repository [Autoformer](https://github.com/thuml/Autoformer).
+## Metodología
 
-## Leaderboard for Time Series Analysis
-
-Till March 2024, the top three models for five different tasks are:
-
-| Model<br>Ranking | Long-term<br>Forecasting<br>Look-Back-96              | Long-term<br/>Forecasting<br/>Look-Back-Searching     | Short-term<br>Forecasting                                    | Imputation                                                   | Classification                                               | Anomaly<br>Detection                               |
-| ---------------- | ----------------------------------------------------- | ----------------------------------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------ | ------------------------------------------------------------ | -------------------------------------------------- |
-| 🥇 1st            | [TimeXer](https://arxiv.org/abs/2402.19072)      | [TimeMixer](https://openreview.net/pdf?id=7oLshfEIC2) | [TimesNet](https://arxiv.org/abs/2210.02186)                 | [TimesNet](https://arxiv.org/abs/2210.02186)                 | [TimesNet](https://arxiv.org/abs/2210.02186)                 | [TimesNet](https://arxiv.org/abs/2210.02186)       |
-| 🥈 2nd            | [iTransformer](https://arxiv.org/abs/2310.06625) | [PatchTST](https://github.com/yuqinie98/PatchTST)     | [Non-stationary<br/>Transformer](https://github.com/thuml/Nonstationary_Transformers) | [Non-stationary<br/>Transformer](https://github.com/thuml/Nonstationary_Transformers) | [Non-stationary<br/>Transformer](https://github.com/thuml/Nonstationary_Transformers) | [FEDformer](https://github.com/MAZiqing/FEDformer) |
-| 🥉 3rd            | [TimeMixer](https://openreview.net/pdf?id=7oLshfEIC2)          | [DLinear](https://arxiv.org/pdf/2205.13504.pdf)       | [FEDformer](https://github.com/MAZiqing/FEDformer)           | [Autoformer](https://github.com/thuml/Autoformer)            | [Informer](https://github.com/zhouhaoyi/Informer2020)        | [Autoformer](https://github.com/thuml/Autoformer)  |
-
-
-**Note: We will keep updating this leaderboard.** If you have proposed advanced and awesome models, you can send us your paper/code link or raise a pull request. We will add them to this repo and update the leaderboard as soon as possible.
-
-**Compared models of this leaderboard.** ☑ means that their codes have already been included in this repo.
-  - [x] **TimeXer** - TimeXer: Empowering Transformers for Time Series Forecasting with Exogenous Variables [[NeurIPS 2024]](https://arxiv.org/abs/2402.19072) [[Code]](https://github.com/thuml/Time-Series-Library/blob/main/models/TimeXer.py)
-  - [x] **TimeMixer** - TimeMixer: Decomposable Multiscale Mixing for Time Series Forecasting [[ICLR 2024]](https://openreview.net/pdf?id=7oLshfEIC2) [[Code]](https://github.com/thuml/Time-Series-Library/blob/main/models/TimeMixer.py).
-  - [x] **TSMixer** - TSMixer: An All-MLP Architecture for Time Series Forecasting [[arXiv 2023]](https://arxiv.org/pdf/2303.06053.pdf) [[Code]](https://github.com/thuml/Time-Series-Library/blob/main/models/TSMixer.py)
-  - [x] **iTransformer** - iTransformer: Inverted Transformers Are Effective for Time Series Forecasting [[ICLR 2024]](https://arxiv.org/abs/2310.06625) [[Code]](https://github.com/thuml/Time-Series-Library/blob/main/models/iTransformer.py).
-  - [x] **PatchTST** - A Time Series is Worth 64 Words: Long-term Forecasting with Transformers [[ICLR 2023]](https://openreview.net/pdf?id=Jbdc0vTOcol) [[Code]](https://github.com/thuml/Time-Series-Library/blob/main/models/PatchTST.py).
-  - [x] **TimesNet** - TimesNet: Temporal 2D-Variation Modeling for General Time Series Analysis [[ICLR 2023]](https://openreview.net/pdf?id=ju_Uqw384Oq) [[Code]](https://github.com/thuml/Time-Series-Library/blob/main/models/TimesNet.py).
-  - [x] **DLinear** - Are Transformers Effective for Time Series Forecasting? [[AAAI 2023]](https://arxiv.org/pdf/2205.13504.pdf) [[Code]](https://github.com/thuml/Time-Series-Library/blob/main/models/DLinear.py).
-  - [x] **LightTS** - Less Is More: Fast Multivariate Time Series Forecasting with Light Sampling-oriented MLP Structures [[arXiv 2022]](https://arxiv.org/abs/2207.01186) [[Code]](https://github.com/thuml/Time-Series-Library/blob/main/models/LightTS.py).
-  - [x] **ETSformer** - ETSformer: Exponential Smoothing Transformers for Time-series Forecasting [[arXiv 2022]](https://arxiv.org/abs/2202.01381) [[Code]](https://github.com/thuml/Time-Series-Library/blob/main/models/ETSformer.py).
-  - [x] **Non-stationary Transformer** - Non-stationary Transformers: Exploring the Stationarity in Time Series Forecasting [[NeurIPS 2022]](https://openreview.net/pdf?id=ucNDIDRNjjv) [[Code]](https://github.com/thuml/Time-Series-Library/blob/main/models/Nonstationary_Transformer.py).
-  - [x] **FEDformer** - FEDformer: Frequency Enhanced Decomposed Transformer for Long-term Series Forecasting [[ICML 2022]](https://proceedings.mlr.press/v162/zhou22g.html) [[Code]](https://github.com/thuml/Time-Series-Library/blob/main/models/FEDformer.py).
-  - [x] **Pyraformer** - Pyraformer: Low-complexity Pyramidal Attention for Long-range Time Series Modeling and Forecasting [[ICLR 2022]](https://openreview.net/pdf?id=0EXmFzUn5I) [[Code]](https://github.com/thuml/Time-Series-Library/blob/main/models/Pyraformer.py).
-  - [x] **Autoformer** - Autoformer: Decomposition Transformers with Auto-Correlation for Long-Term Series Forecasting [[NeurIPS 2021]](https://openreview.net/pdf?id=I55UqU-M11y) [[Code]](https://github.com/thuml/Time-Series-Library/blob/main/models/Autoformer.py).
-  - [x] **Informer** - Informer: Beyond Efficient Transformer for Long Sequence Time-Series Forecasting [[AAAI 2021]](https://ojs.aaai.org/index.php/AAAI/article/view/17325/17132) [[Code]](https://github.com/thuml/Time-Series-Library/blob/main/models/Informer.py).
-  - [x] **Reformer** - Reformer: The Efficient Transformer [[ICLR 2020]](https://openreview.net/forum?id=rkgNKkHtvB) [[Code]](https://github.com/thuml/Time-Series-Library/blob/main/models/Reformer.py).
-  - [x] **Transformer** - Attention is All You Need [[NeurIPS 2017]](https://proceedings.neurips.cc/paper/2017/file/3f5ee243547dee91fbd053c1c4a845aa-Paper.pdf) [[Code]](https://github.com/thuml/Time-Series-Library/blob/main/models/Transformer.py).
-
-See our latest paper [[TimesNet]](https://arxiv.org/abs/2210.02186) for the comprehensive benchmark. We will release a real-time updated online version soon.
-
-**Newly added baselines.** We will add them to the leaderboard after a comprehensive evaluation.
-  - [x] **TimeFilter** - TimeFilter: Patch-Specific Spatial-Temporal Graph Filtration for Time Series Forecasting [[ICML 2025]](https://arxiv.org/abs/2501.13041) [[Code]](https://github.com/thuml/Time-Series-Library/blob/main/models/TimeFilter.py)
-  - [x] **KAN-AD** - KAN-AD: Time Series Anomaly Detection with Kolmogorov-Arnold Networks [[ICML 2025]](https://arxiv.org/abs/2411.00278) [[Code]](https://github.com/thuml/Time-Series-Library/blob/main/models/KANAD.py)
-  - [x] **MultiPatchFormer** - A multiscale model for multivariate time series forecasting [[Scientific Reports 2025]](https://www.nature.com/articles/s41598-024-82417-4) [[Code]](https://github.com/thuml/Time-Series-Library/blob/main/models/MultiPatchFormer.py)
-  - [x] **WPMixer** - WPMixer: Efficient Multi-Resolution Mixing for Long-Term Time Series Forecasting [[AAAI 2025]](https://arxiv.org/abs/2412.17176) [[Code]](https://github.com/thuml/Time-Series-Library/blob/main/models/WPMixer.py)
-  - [x] **MSGNet** - MSGNet: Learning Multi-Scale Inter-Series Correlations for Multivariate Time Series Forecasting [[AAAI 2024]](https://dl.acm.org/doi/10.1609/aaai.v38i10.28991) [[Code]](https://github.com/thuml/Time-Series-Library/blob/main/models/MSGNet.py)
-  - [x] **PAttn** - Are Language Models Actually Useful for Time Series Forecasting? [[NeurIPS 2024]](https://arxiv.org/pdf/2406.16964) [[Code]](https://github.com/thuml/Time-Series-Library/blob/main/models/PAttn.py)
-  - [x] **Mamba** - Mamba: Linear-Time Sequence Modeling with Selective State Spaces [[arXiv 2023]](https://arxiv.org/abs/2312.00752) [[Code]](https://github.com/thuml/Time-Series-Library/blob/main/models/Mamba.py)
-  - [x] **SegRNN** - SegRNN: Segment Recurrent Neural Network for Long-Term Time Series Forecasting [[arXiv 2023]](https://arxiv.org/abs/2308.11200.pdf) [[Code]](https://github.com/thuml/Time-Series-Library/blob/main/models/SegRNN.py).
-  - [x] **Koopa** - Koopa: Learning Non-stationary Time Series Dynamics with Koopman Predictors [[NeurIPS 2023]](https://arxiv.org/pdf/2305.18803.pdf) [[Code]](https://github.com/thuml/Time-Series-Library/blob/main/models/Koopa.py).
-  - [x] **FreTS** - Frequency-domain MLPs are More Effective Learners in Time Series Forecasting [[NeurIPS 2023]](https://arxiv.org/pdf/2311.06184.pdf) [[Code]](https://github.com/thuml/Time-Series-Library/blob/main/models/FreTS.py).
-  - [x] **MICN** - MICN: Multi-scale Local and Global Context Modeling for Long-term Series Forecasting [[ICLR 2023]](https://openreview.net/pdf?id=zt53IDUR1U)[[Code]](https://github.com/thuml/Time-Series-Library/blob/main/models/MICN.py).
-  - [x] **Crossformer** - Crossformer: Transformer Utilizing Cross-Dimension Dependency for Multivariate Time Series Forecasting [[ICLR 2023]](https://openreview.net/pdf?id=vSVLM2j9eie)[[Code]](https://github.com/thuml/Time-Series-Library/blob/main/models/Crossformer.py).
-  - [x] **TiDE** - Long-term Forecasting with TiDE: Time-series Dense Encoder [[arXiv 2023]](https://arxiv.org/pdf/2304.08424.pdf) [[Code]](https://github.com/thuml/Time-Series-Library/blob/main/models/TiDE.py).
-  - [x] **SCINet** - SCINet: Time Series Modeling and Forecasting with Sample Convolution and Interaction [[NeurIPS 2022]](https://openreview.net/pdf?id=AyajSjTAzmg)[[Code]](https://github.com/thuml/Time-Series-Library/blob/main/models/SCINet.py).
-  - [x] **FiLM** - FiLM: Frequency improved Legendre Memory Model for Long-term Time Series Forecasting [[NeurIPS 2022]](https://openreview.net/forum?id=zTQdHSQUQWc)[[Code]](https://github.com/thuml/Time-Series-Library/blob/main/models/FiLM.py).
-  - [x] **TFT** - Temporal Fusion Transformers for Interpretable Multi-horizon Time Series Forecasting [[arXiv 2019]](https://arxiv.org/abs/1912.09363)[[Code]](https://github.com/thuml/Time-Series-Library/blob/main/models/TemporalFusionTransformer.py). 
- 
-## Usage
-
-1. Install Python 3.8. For convenience, execute the following command.
-
-```
-pip install -r requirements.txt
-```
-
-2. Prepare Data. You can obtain the well pre-processed datasets from [[Google Drive]](https://drive.google.com/drive/folders/13Cg1KYOlzM5C7K8gK8NfC-F3EYxkM3D2?usp=sharing) or [[Baidu Drive]](https://pan.baidu.com/s/1r3KhGd0Q9PJIUZdfEYoymg?pwd=i9iy), Then place the downloaded data in the folder`./dataset`. Here is a summary of supported datasets.
+### Pipeline RITMO Propuesto
 
 <p align="center">
-<img src=".\pic\dataset.png" height = "200" alt="" align=center />
+<img src="./pic/Pipeline-RITMO.png" alt="Pipeline RITMO" width="800"/>
 </p>
 
-3. Train and evaluate model. We provide the experiment scripts for all benchmarks under the folder `./scripts/`. You can reproduce the experiment results as the following examples:
+El sistema implementa un pipeline de cinco etapas:
+
+**1. Normalización (RevIN)**
+```
+X_norm = (X - μ) / σ
+```
+Reversible Instance Normalization para garantizar estacionariedad y robustez frente a distribution shift.
+
+**2. Entrenamiento HMM (Baum-Welch)**
+- Estimación de parámetros λ* = (A*, B*, π*) mediante algoritmo EM
+- Emisiones gaussianas N(μ_k, σ²_k) por estado
+- Entrenamiento sobre datasets: ETTh1, ETTh2, Weather, Electricity
+- Complejidad: O(T·K²) por iteración
+
+**3. Tokenización (Viterbi)**
+```
+Q* = argmax_Q P(Q|O, λ*)
+```
+Programación dinámica para obtener secuencia óptima de estados ocultos [z₁, z₂, ..., z_T].
+
+**4. Generación de Embeddings Estructurados**
+```
+e_k = [μ_k, σ_k, A[k,:]]
+```
+Donde:
+- μ_k: centro del régimen estadístico
+- σ_k: volatilidad intrínseca del régimen
+- A[k,:]: probabilidades de transición (dinámica temporal explícita)
+
+**5. Predicción (Transformer)**
+```
+ŷ_norm = Transformer([e_{z₁}, ..., e_{z_I}])
+ŷ = ŷ_norm × σ + μ
+```
+Transformer decoder opera sobre embeddings estructurados en lugar de valores crudos.
+
+## Modelos Baseline
+
+El proyecto compara el enfoque HMM propuesto contra cuatro baselines representativos del estado del arte:
+
+### 1. PatchTST (Nie et al., 2023)
+Baseline principal con patch-based tokenization. Segmenta series en patches como tokens, reduciendo complejidad de atención de O(L²) a O((L/S)²). Implementa channel-independence y normalización Non-stationary.
+
+**Archivo:** `models/PatchTST.py`
+
+### 2. DLinear (Zeng et al., 2023)
+Baseline simple que demuestra que descomposición lineal puede superar a transformers complejos. Descompone series en trend + seasonal aplicando capas lineales separadas.
+
+**Archivo:** `models/DLinear.py`
+
+### 3. TimeMixer (Wang et al., 2024)
+Baseline con descomposición multi-escala y mixing operations. Implementa Past Decomposable Mixing (PDM) y soporta moving average y DFT decomposition.
+
+**Archivo:** `models/TimeMixer.py`
+
+### 4. TimeXer (Wang et al., 2024)
+Baseline para forecasting con variables exógenas. Implementa paradigma de forecasting práctico con embeddings endógenos/exógenos y global token mechanism.
+
+**Archivo:** `models/TimeXer.py`
+
+## Datasets
+
+### Entrenamiento HMM (4 datasets)
+
+1. **ETTh1** - Electric Transformer Temperature (hourly)
+   - 7 características, frecuencia horaria
+   - Split 7:1:2 (train/val/test)
+   - Benchmark universal consolidado
+
+2. **ETTh2** - Electric Transformer Temperature (hourly)
+   - Variante con distribution shift documentado
+   - Valida robustez de RevIN ante cambios distribucionales
+
+3. **Weather** - Temperatura wet-bulb
+   - Regímenes climáticos estacionales claros (invierno/verano)
+   - Ideal para evaluar captura de cambios de régimen interpretables
+
+4. **Electricity** - Consumo eléctrico (MT_320)
+   - Periodicidad diaria fuerte (24h)
+   - Validación de patrones cíclicos día/noche
+
+### Evaluación Zero-Shot (2 datasets)
+
+5. **Traffic** - Ocupación de sensores de tráfico
+   - Dominio diferente sin re-entrenamiento
+   - Regímenes rush-hour explícitos
+
+6. **Exchange** - Tipos de cambio
+   - Series financieras sin periodicidad marcada
+   - Test de robustez para HMM en series sin estacionalidad clara
+
+**Nota:** Descargar datasets desde [[Google Drive]](https://drive.google.com/drive/folders/13Cg1KYOlzM5C7K8gK8NfC-F3EYxkM3D2?usp=sharing) o [[Baidu Drive]](https://pan.baidu.com/s/1r3KhGd0Q9PJIUZdfEYoymg?pwd=i9iy) y colocar en `./dataset/`.
+
+## Configuración Experimental
+
+**Protocolo estándar:**
+- Input length: I = 96 timesteps
+- Prediction horizons: O ∈ {96, 192, 336, 720}
+- Métricas: MSE (Mean Squared Error), MAE (Mean Absolute Error)
+- Configuración: Look-Back-96 para comparabilidad directa
+- Reporte: Promedio sobre los cuatro horizontes de predicción
+
+**Protocolo de evaluación:**
+1. Desempeño predictivo (MSE/MAE por dataset y promedio general)
+2. Ratio de compresión (timesteps originales / tokens generados)
+3. Eficiencia computacional (tiempo de entrenamiento/inferencia)
+4. Interpretabilidad de regímenes (solo HMM: análisis cualitativo de estados)
+
+## Instalación
+
+### Requisitos
+
+- Python 3.10
+- PyTorch 2.9.0+ (CPU o GPU)
+- Conda (recomendado para gestión de entorno)
+
+### Setup del Entorno
+
+```bash
+# Opción 1: Crear entorno desde environment.yml (recomendado)
+conda env create -f environment.yml
+conda activate ritmo
+
+# Opción 2: Instalación manual
+conda create -n ritmo python=3.10 -y
+conda activate ritmo
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+pip install einops==0.8.0 local-attention==1.9.14 matplotlib pandas scikit-learn scipy sktime reformer-pytorch tqdm PyWavelets patool
+```
+
+### Verificación de Instalación
+
+```bash
+# Verificar importación de modelos
+python -c "from models import DLinear, PatchTST, TimeMixer, TimeXer; print('Modelos importados correctamente')"
+
+# Verificar PyTorch
+python -c "import torch; print(f'PyTorch {torch.__version__}')"
+```
+
+## Uso
+
+### Ejecutar Experimentos Baseline
+
+```bash
+# Ejecutar modelo específico en dataset específico
+python run.py \
+  --model PatchTST \
+  --data ETTh1 \
+  --task_name long_term_forecast \
+  --seq_len 96 \
+  --pred_len 96 \
+  --features S
+
+# Parámetros principales
+--model: DLinear | PatchTST | TimeMixer | TimeXer
+--data: ETTh1 | ETTh2 | Weather | Electricity | Traffic | Exchange
+--seq_len: Longitud de entrada (default: 96)
+--pred_len: Horizonte de predicción (96 | 192 | 336 | 720)
+--features: S (univariate) | M (multivariate) | MS (multi-to-uni)
+```
+
+### Ejecutar Scripts Pre-configurados
+
+Los scripts incluyen configuración óptima para múltiples horizontes de predicción:
+
+```bash
+# Long-term forecasting
+bash scripts/long_term_forecast/ETT_script/PatchTST_ETTh1.sh
+bash scripts/long_term_forecast/Weather_script/TimeMixer.sh
+bash scripts/long_term_forecast/ECL_script/DLinear.sh
+
+# Exogenous forecasting (TimeXer)
+bash scripts/exogenous_forecast/ETTh1/TimeXer.sh
+```
+
+## Estructura del Repositorio
 
 ```
-# long-term forecast
-bash ./scripts/long_term_forecast/ETT_script/TimesNet_ETTh1.sh
-# short-term forecast
-bash ./scripts/short_term_forecast/TimesNet_M4.sh
-# imputation
-bash ./scripts/imputation/ETT_script/TimesNet_ETTh1.sh
-# anomaly detection
-bash ./scripts/anomaly_detection/PSM/TimesNet.sh
-# classification
-bash ./scripts/classification/TimesNet.sh
+RITMO/
+├── models/                  # Modelos baseline (4 modelos)
+│   ├── DLinear.py
+│   ├── PatchTST.py
+│   ├── TimeMixer.py
+│   └── TimeXer.py
+├── layers/                  # Componentes compartidos
+│   ├── Embed.py
+│   ├── Transformer_EncDec.py
+│   ├── SelfAttention_Family.py
+│   ├── Autoformer_EncDec.py
+│   └── StandardNorm.py
+├── exp/                     # Clases de experimentación
+│   ├── exp_basic.py
+│   └── exp_long_term_forecasting.py
+├── data_provider/          # Carga de datos
+│   ├── data_factory.py
+│   └── data_loader.py
+├── utils/                   # Utilidades
+│   ├── metrics.py
+│   ├── tools.py
+│   └── timefeatures.py
+├── scripts/                 # Scripts de ejecución (26 scripts)
+│   ├── long_term_forecast/
+│   └── exogenous_forecast/
+├── run.py                   # Script principal
+├── environment.yml          # Especificación Conda
+├── Anteproyecto-RITMO.md   # Documento completo del TFG
+└── CLAUDE.md                # Guía de desarrollo
 ```
 
-4. Develop your own model.
+## Marco Teórico
 
-- Add the model file to the folder `./models`. You can follow the `./models/Transformer.py`.
-- Include the newly added model in the `Exp_Basic.model_dict` of  `./exp/exp_basic.py`.
-- Create the corresponding scripts under the folder `./scripts`.
+### Hidden Markov Models
 
-Note: 
+Un HMM se define mediante el conjunto de parámetros λ = (A, B, π):
 
-(1) About classification: Since we include all five tasks in a unified code base, the accuracy of each subtask may fluctuate but the average performance can be reproduced (even a bit better). We have provided the reproduced checkpoints [here](https://github.com/thuml/Time-Series-Library/issues/494).
+- **A**: Matriz de transición K×K con A_ij = P(q_t = j | q_{t-1} = i)
+- **B**: Distribuciones de emisión gaussianas N(μ_k, σ²_k) por estado k
+- **π**: Distribución inicial π_k = P(q_1 = k)
 
-(2) About anomaly detection: Some discussion about the adjustment strategy in anomaly detection can be found [here](https://github.com/thuml/Anomaly-Transformer/issues/14). The key point is that the adjustment strategy corresponds to an event-level metric.
+**Algoritmos fundamentales:**
 
-## Citation
+1. **Baum-Welch (entrenamiento):** Estimación de máxima verosimilitud mediante EM. Garantiza convergencia monótona a máximo local.
 
-If you find this repo useful, please cite our paper.
+2. **Viterbi (decodificación):** Encuentra secuencia óptima Q* = argmax_Q P(Q|O, λ) mediante programación dinámica con complejidad O(T·K²).
+
+3. **Forward-Backward (inferencia):** Calcula probabilidades marginales P(q_t = k | O, λ) para cuantificar incertidumbre en asignación de estados.
+
+### Embeddings Estructurados vs. Determinísticos
+
+La propuesta HMM genera embeddings donde cada dimensión posee significado estadístico interpretable:
 
 ```
-@inproceedings{wu2023timesnet,
-  title={TimesNet: Temporal 2D-Variation Modeling for General Time Series Analysis},
-  author={Haixu Wu and Tengge Hu and Yong Liu and Hang Zhou and Jianmin Wang and Mingsheng Long},
-  booktitle={International Conference on Learning Representations},
-  year={2023},
-}
-
-@article{wang2024tssurvey,
-  title={Deep Time Series Models: A Comprehensive Survey and Benchmark},
-  author={Yuxuan Wang and Haixu Wu and Jiaxiang Dong and Yong Liu and Mingsheng Long and Jianmin Wang},
-  booktitle={arXiv preprint arXiv:2407.13278},
-  year={2024},
-}
+e_k = [μ_k, σ_k, A[k,:]]
 ```
 
-## Contact
-If you have any questions or suggestions, feel free to contact our maintenance team:
+A diferencia de métodos determinísticos (discretización, patching) o implícitos (foundation models), esta representación encapsula simultáneamente:
+- Información estadística local (μ_k caracteriza valor central, σ_k cuantifica volatilidad)
+- Dinámica temporal explícita (A[k,:] codifica P(z_t = j | z_{t-1} = k) directamente)
 
-Current:
-- Haixu Wu (Ph.D. student, wuhx23@mails.tsinghua.edu.cn)
-- Yong Liu (Ph.D. student, liuyong21@mails.tsinghua.edu.cn)
-- Huikun Weng (Undergraduate, wenghk22@mails.tsinghua.edu.cn)
+## Estado del Arte
 
-Previous:
-- Yuxuan Wang (Ph.D. student, wangyuxu22@mails.tsinghua.edu.cn)
-- Tengge Hu (Master student, htg21@mails.tsinghua.edu.cn)
-- Haoran Zhang (Master student, z-hr20@mails.tsinghua.edu.cn)
-- Jiawei Guo (Undergraduate, guo-jw21@mails.tsinghua.edu.cn)
+### Tokenización para Series Temporales
 
-Or describe it in Issues.
+**Discretización:**
+- SAX (Lin et al., 2007): Symbolic Aggregate approXimation
+- VQ-VAE (van den Oord et al., 2017): Vector Quantized Variational AutoEncoders
+- Chronos (Ansari et al., 2024): Cuantización uniforme + T5/GPT-2
 
-## Acknowledgement
+**Patching:**
+- PatchTST (Nie et al., 2023): Patches de longitud fija como tokens
+- EntroPE (Abeywickrama et al., 2025): Boundaries adaptativos mediante entropía condicional
 
-This library is constructed based on the following repos:
+**Descomposición:**
+- Autoformer (Wu et al., 2021): Descomposición con autocorrelación
+- FEDformer (Zhou et al., 2022): Descomposición en dominio frecuencial
+- TimeMixer (Wang et al., 2024): Descomposición multi-escala
 
-- Forecasting: https://github.com/thuml/Autoformer.
+**Foundation Models:**
+- MOMENT (Goswami et al., 2024): Pre-entrenado sobre 27B+ timesteps
+- Timer (Liu et al., 2024): GPT-2 con discretización cuantílica adaptativa
 
-- Anomaly Detection: https://github.com/thuml/Anomaly-Transformer.
+### HMM en Series Temporales
 
-- Classification: https://github.com/thuml/Flowformer.
+**Fundamentos:**
+- Rabiner (1989): Tutorial sistemático de HMM
+- Dempster et al. (1977): Algoritmo EM para estimación de parámetros
+- Hamilton (1989): Markov-Switching para series económicas
 
-All the experiment datasets are public, and we obtain them from the following links:
+**Aplicaciones Modernas:**
+- Tang & Matteson (2021): ProTran combina State-Space Models con attention
+- Yeh & Tang (2022): Neural HMMs con dependencias markovianas explícitas
+- Fox et al. (2011): Sticky HDP-HMM con selección automática de estados
 
-- Long-term Forecasting and Imputation: https://github.com/thuml/Autoformer.
+### Saturación de Benchmarks
 
-- Short-term Forecasting: https://github.com/ServiceNow/N-BEATS.
+Wang et al. (2025) establecen "Accuracy Law" que caracteriza relación exponencial entre complejidad de patrones y error mínimo: MSE ≈ exp(α·Complexity). Identifican saturación en múltiples benchmarks (ETTh1, ETTh2, Weather, Electricity), donde métodos determinísticos actuales se aproximan asintóticamente a límite teórico.
 
-- Anomaly Detection: https://github.com/thuml/Anomaly-Transformer.
+Esta saturación posiciona la integración de HMM como dirección necesaria para avanzar más allá de enfoques determinísticos mediante estructura probabilística explícita.
 
-- Classification: https://www.timeseriesclassification.com/.
+## Referencias Principales
 
-## All Thanks To Our Contributors
+### Modelos Baseline
 
-<a href="https://github.com/thuml/Time-Series-Library/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=thuml/Time-Series-Library" />
-</a>
+Nie, Y., Nguyen, N. H., Sinthong, P., & Kalagnanam, J. (2023). A time series is worth 64 words: Long-term forecasting with transformers. *Proceedings of the 11th International Conference on Learning Representations*.
+
+Zeng, A., Chen, M., Zhang, L., & Xu, Q. (2023). Are transformers effective for time series forecasting? *Proceedings of the AAAI Conference on Artificial Intelligence*, 37(9), 11121-11128.
+
+Wang, Y., Wu, H., Dong, J., Liu, Y., Long, M., & Wang, J. (2024). TimeMixer: Decomposable multiscale mixing for time series forecasting. *Proceedings of the 12th International Conference on Learning Representations*.
+
+Wang, Y., Wu, H., Dong, J., Liu, Y., Qiu, Y., Zhang, H., Wang, J., & Long, M. (2024). TimeXer: Empowering transformers for time series forecasting with exogenous variables. *Advances in Neural Information Processing Systems 37*.
+
+### Hidden Markov Models
+
+Rabiner, L. R. (1989). A tutorial on hidden Markov models and selected applications in speech recognition. *Proceedings of the IEEE*, 77(2), 257-286.
+
+Hamilton, J. D. (1989). A new approach to the economic analysis of nonstationary time series and the business cycle. *Econometrica*, 57(2), 357-384.
+
+Dempster, A. P., Laird, N. M., & Rubin, D. B. (1977). Maximum likelihood from incomplete data via the EM algorithm. *Journal of the Royal Statistical Society: Series B (Methodological)*, 39(1), 1-38.
+
+### Surveys
+
+Wen, Q., Zhou, T., Zhang, C., Chen, W., Ma, Z., Yan, J., & Sun, L. (2023). Transformers in time series: A survey. *Proceedings of the Thirty-Second International Joint Conference on Artificial Intelligence*.
+
+Zhang, X., Chowdhury, R. R., Gupta, R. K., & Shang, J. (2024). Large language models for time series: A survey. *arXiv preprint arXiv:2402.01801*.
+
+Liang, Y., Wen, H., Nie, Y., Jiang, Y., Jin, M., Song, D., Pan, S., & Wen, Q. (2024). Foundation models for time series analysis: A tutorial and survey. *Proceedings of the 30th ACM SIGKKDD Conference on Knowledge Discovery and Data Mining*.
+
+### Benchmarks
+
+Zhou, H., Zhang, S., Peng, J., Zhang, S., Li, J., Xiong, H., & Zhang, W. (2021). Informer: Beyond efficient transformer for long sequence time-series forecasting. *Proceedings of the AAAI Conference on Artificial Intelligence*, 35(12), 11106-11115.
+
+Wang, Y., Wu, H., Ma, Y., Fang, Y., Zhang, Z., Liu, Y., Wang, S., Ye, Z., Xiang, Y., Wang, J., & Long, M. (2025). Accuracy law for the future of deep time series forecasting. *arXiv preprint arXiv:2510.02729*.
+
+## Documentación Adicional
+
+Para información detallada sobre la metodología, consultar:
+- **Anteproyecto-RITMO.md**: Memoria justificativa completa con estado del arte, marco teórico y cronograma
+- **CLAUDE.md**: Guía de desarrollo con estándares de código y workflow
+
+## Licencia
+
+Este proyecto se basa en Time-Series-Library (TSLib) y mantiene su licencia original. Todos los datasets utilizados son públicos y se obtienen de las fuentes originales listadas en la documentación.
+
+## Contacto
+
+Jaime Oriol Goicoechea
+Universidad del País Vasco (UPV/EHU)
+Trabajo de Fin de Grado - Ingeniería Informática
+
+Directores:
+[Información de contacto de los directores del TFG]
+
+Para preguntas o sugerencias sobre el proyecto, abrir un issue en el repositorio o contactar directamente.
+
+## Agradecimientos
+
+Este proyecto se construye sobre la base de Time-Series-Library (TSLib) desarrollado por THUML (Tsinghua Machine Learning Lab). Agradecemos a los autores originales y mantenedores por proporcionar una base de código robusta y bien documentada.
+
+Repositorio original: https://github.com/thuml/Time-Series-Library
