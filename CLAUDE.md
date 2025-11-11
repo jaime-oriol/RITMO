@@ -561,22 +561,6 @@ MSPE = Mean Squared Percentage Error
   - Hamilton, 1989 - Markov-Switching models
   - Dempster et al., 1977 - EM Algorithm
 
-### Papers Clave del Estado del Arte
-
-**Surveys:**
-- Wen et al., 2023 - Transformers in Time Series: A Survey
-- Zhang et al., 2024 - Large Language Models for Time Series
-- Liang et al., 2024 - Foundation Models for Time Series
-
-**Tokenización:**
-- Lin et al., 2007 - SAX (Symbolic Aggregate approXimation)
-- Ansari et al., 2024 - Chronos: Learning the Language of Time Series
-- Talukder et al., 2024 - TOTEM: TOkenized Time Series Embeddings
-
-**Benchmarks:**
-- Zhou et al., 2021 - Informer (protocolo experimental estándar)
-- Wang et al., 2025 - Accuracy Law (saturación de benchmarks)
-
 ## Guía de Troubleshooting
 
 ### Problemas Comunes
@@ -613,49 +597,6 @@ ls -la dataset/
 conda env remove -n ritmo
 conda env create -f environment.yml
 ```
-
-## Progreso del TFG
-
-### Fase Actual: Preparación del Entorno
-
-✅ **Completado:**
-- Limpieza del repositorio (29 modelos eliminados → 4 baselines)
-- Eliminación de scripts no usados (265 → 26 scripts)
-- Actualización de exp_basic.py
-- Creación de entorno conda 'ritmo' con Python 3.10
-- Instalación de PyTorch 2.9.0 (CPU)
-- Instalación de todas las dependencias
-- Verificación de imports de modelos
-- Creación de environment.yml
-- Actualización de CLAUDE.md
-
-### Próximos Pasos
-
-1. **Descarga de Datasets** (Fase 1)
-   - Descargar ETTh1, ETTh2, Weather, Electricity, Traffic, Exchange
-   - Verificar estructura de datos
-   - Comprobar splits train/val/test
-
-2. **Experimentos Baseline** (Fase 2)
-   - Ejecutar 4 modelos en 6 datasets
-   - Horizontes: 96, 192, 336, 720
-   - Recopilar métricas MSE/MAE
-
-3. **Implementación HMM** (Fase 3)
-   - Implementar algoritmo Baum-Welch
-   - Implementar algoritmo Viterbi
-   - Generar embeddings e_k = [μ_k, σ_k, A[k,:]]
-
-4. **Integración y Evaluación** (Fase 4)
-   - Integrar HMM en pipeline
-   - Comparar con baselines
-   - Análisis de resultados
-
-5. **Redacción y Defensa** (Fase 5)
-   - Memoria final del TFG
-   - Preparación de presentación
-   - Defensa ante tribunal
-
 ---
 
 **Recuerda**: Esta guía es la fuente única de verdad para el desarrollo del TFG RITMO. Mantenla actualizada a medida que el proyecto evoluciona. Cuando uses Claude Code, referencia esta guía para prácticas de desarrollo consistentes.
