@@ -239,116 +239,6 @@ RITMO/
 └── CLAUDE.md                # Guía de desarrollo
 ```
 
-## Marco Teórico
-
-### Hidden Markov Models
-
-Un HMM se define mediante el conjunto de parámetros λ = (A, B, π):
-
-- **A**: Matriz de transición K×K con A_ij = P(q_t = j | q_{t-1} = i)
-- **B**: Distribuciones de emisión gaussianas N(μ_k, σ²_k) por estado k
-- **π**: Distribución inicial π_k = P(q_1 = k)
-
-**Algoritmos fundamentales:**
-
-1. **Baum-Welch (entrenamiento):** Estimación de máxima verosimilitud mediante EM. Garantiza convergencia monótona a máximo local.
-
-2. **Viterbi (decodificación):** Encuentra secuencia óptima Q* = argmax_Q P(Q|O, λ) mediante programación dinámica con complejidad O(T·K²).
-
-3. **Forward-Backward (inferencia):** Calcula probabilidades marginales P(q_t = k | O, λ) para cuantificar incertidumbre en asignación de estados.
-
-### Embeddings Estructurados vs. Determinísticos
-
-La propuesta HMM genera embeddings donde cada dimensión posee significado estadístico interpretable:
-
-```
-e_k = [μ_k, σ_k, A[k,:]]
-```
-
-A diferencia de métodos determinísticos (discretización, patching) o implícitos (foundation models), esta representación encapsula simultáneamente:
-- Información estadística local (μ_k caracteriza valor central, σ_k cuantifica volatilidad)
-- Dinámica temporal explícita (A[k,:] codifica P(z_t = j | z_{t-1} = k) directamente)
-
-## Estado del Arte
-
-### Tokenización para Series Temporales
-
-**Discretización:**
-- SAX (Lin et al., 2007): Symbolic Aggregate approXimation
-- VQ-VAE (van den Oord et al., 2017): Vector Quantized Variational AutoEncoders
-- Chronos (Ansari et al., 2024): Cuantización uniforme + T5/GPT-2
-
-**Patching:**
-- PatchTST (Nie et al., 2023): Patches de longitud fija como tokens
-- EntroPE (Abeywickrama et al., 2025): Boundaries adaptativos mediante entropía condicional
-
-**Descomposición:**
-- Autoformer (Wu et al., 2021): Descomposición con autocorrelación
-- FEDformer (Zhou et al., 2022): Descomposición en dominio frecuencial
-- TimeMixer (Wang et al., 2024): Descomposición multi-escala
-
-**Foundation Models:**
-- MOMENT (Goswami et al., 2024): Pre-entrenado sobre 27B+ timesteps
-- Timer (Liu et al., 2024): GPT-2 con discretización cuantílica adaptativa
-
-### HMM en Series Temporales
-
-**Fundamentos:**
-- Rabiner (1989): Tutorial sistemático de HMM
-- Dempster et al. (1977): Algoritmo EM para estimación de parámetros
-- Hamilton (1989): Markov-Switching para series económicas
-
-**Aplicaciones Modernas:**
-- Tang & Matteson (2021): ProTran combina State-Space Models con attention
-- Yeh & Tang (2022): Neural HMMs con dependencias markovianas explícitas
-- Fox et al. (2011): Sticky HDP-HMM con selección automática de estados
-
-### Saturación de Benchmarks
-
-Wang et al. (2025) establecen "Accuracy Law" que caracteriza relación exponencial entre complejidad de patrones y error mínimo: MSE ≈ exp(α·Complexity). Identifican saturación en múltiples benchmarks (ETTh1, ETTh2, Weather, Electricity), donde métodos determinísticos actuales se aproximan asintóticamente a límite teórico.
-
-Esta saturación posiciona la integración de HMM como dirección necesaria para avanzar más allá de enfoques determinísticos mediante estructura probabilística explícita.
-
-## Referencias Principales
-
-### Modelos Baseline
-
-Nie, Y., Nguyen, N. H., Sinthong, P., & Kalagnanam, J. (2023). A time series is worth 64 words: Long-term forecasting with transformers. *Proceedings of the 11th International Conference on Learning Representations*.
-
-Zeng, A., Chen, M., Zhang, L., & Xu, Q. (2023). Are transformers effective for time series forecasting? *Proceedings of the AAAI Conference on Artificial Intelligence*, 37(9), 11121-11128.
-
-Wang, Y., Wu, H., Dong, J., Liu, Y., Long, M., & Wang, J. (2024). TimeMixer: Decomposable multiscale mixing for time series forecasting. *Proceedings of the 12th International Conference on Learning Representations*.
-
-Wang, Y., Wu, H., Dong, J., Liu, Y., Qiu, Y., Zhang, H., Wang, J., & Long, M. (2024). TimeXer: Empowering transformers for time series forecasting with exogenous variables. *Advances in Neural Information Processing Systems 37*.
-
-### Hidden Markov Models
-
-Rabiner, L. R. (1989). A tutorial on hidden Markov models and selected applications in speech recognition. *Proceedings of the IEEE*, 77(2), 257-286.
-
-Hamilton, J. D. (1989). A new approach to the economic analysis of nonstationary time series and the business cycle. *Econometrica*, 57(2), 357-384.
-
-Dempster, A. P., Laird, N. M., & Rubin, D. B. (1977). Maximum likelihood from incomplete data via the EM algorithm. *Journal of the Royal Statistical Society: Series B (Methodological)*, 39(1), 1-38.
-
-### Surveys
-
-Wen, Q., Zhou, T., Zhang, C., Chen, W., Ma, Z., Yan, J., & Sun, L. (2023). Transformers in time series: A survey. *Proceedings of the Thirty-Second International Joint Conference on Artificial Intelligence*.
-
-Zhang, X., Chowdhury, R. R., Gupta, R. K., & Shang, J. (2024). Large language models for time series: A survey. *arXiv preprint arXiv:2402.01801*.
-
-Liang, Y., Wen, H., Nie, Y., Jiang, Y., Jin, M., Song, D., Pan, S., & Wen, Q. (2024). Foundation models for time series analysis: A tutorial and survey. *Proceedings of the 30th ACM SIGKKDD Conference on Knowledge Discovery and Data Mining*.
-
-### Benchmarks
-
-Zhou, H., Zhang, S., Peng, J., Zhang, S., Li, J., Xiong, H., & Zhang, W. (2021). Informer: Beyond efficient transformer for long sequence time-series forecasting. *Proceedings of the AAAI Conference on Artificial Intelligence*, 35(12), 11106-11115.
-
-Wang, Y., Wu, H., Ma, Y., Fang, Y., Zhang, Z., Liu, Y., Wang, S., Ye, Z., Xiang, Y., Wang, J., & Long, M. (2025). Accuracy law for the future of deep time series forecasting. *arXiv preprint arXiv:2510.02729*.
-
-## Documentación Adicional
-
-Para información detallada sobre la metodología, consultar:
-- **Anteproyecto-RITMO.md**: Memoria justificativa completa con estado del arte, marco teórico y cronograma
-- **CLAUDE.md**: Guía de desarrollo con estándares de código y workflow
-
 ## Licencia
 
 Este proyecto se basa en Time-Series-Library (TSLib) y mantiene su licencia original. Todos los datasets utilizados son públicos y se obtienen de las fuentes originales listadas en la documentación.
@@ -356,11 +246,8 @@ Este proyecto se basa en Time-Series-Library (TSLib) y mantiene su licencia orig
 ## Contacto
 
 Jaime Oriol Goicoechea
-Universidad del País Vasco (UPV/EHU)
-Trabajo de Fin de Grado - Ingeniería Informática
-
-Directores:
-[Información de contacto de los directores del TFG]
+Universidad Francisco de Vitorio
+Trabajo de Fin de Grado - Business Analytics
 
 Para preguntas o sugerencias sobre el proyecto, abrir un issue en el repositorio o contactar directamente.
 
