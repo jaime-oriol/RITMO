@@ -1,0 +1,661 @@
+# CLAUDE.md - Guía de Desarrollo RITMO
+
+## Filosofía Core
+
+**Ve paso a paso, uno a uno. Despacio es el camino más rápido. Escribe siempre el código lo más compacto y conciso posible, y que cumpla exactamente lo pedido al 100%. Sin emojis ni florituras. Usa nombres claros y estándar. Incluye solo comentarios útiles y necesarios.**
+
+Antes de realizar cualquier tarea, revisa cuidadosamente el archivo CLAUDE.md.
+Aquí encontrarás las directrices de trabajo y la estructura del proyecto que debes seguir.
+
+### Principios de Desarrollo
+
+- **KISS (Keep It Simple, Stupid)**: Elige soluciones simples sobre complejas
+- **YAGNI (You Aren't Gonna Need It)**: Implementa características solo cuando sean necesarias
+- **Fail Fast**: Detecta errores temprano y lanza excepciones inmediatamente
+- **Single Responsibility**: Cada función, clase y módulo tiene un propósito claro
+- **Dependency Inversion**: Módulos de alto nivel dependen de abstracciones, no implementaciones
+
+## Descripción del Proyecto
+
+**RITMO** - **R**egímenes latentes mediante **I**nferencia **T**emporal con **M**arkov **O**culto para tokenización y forecasting de series temporales
+
+### Objetivo del TFG
+
+Desarrollar e implementar un sistema de tokenización de series temporales basado en Estados Ocultos de Markov (HMM), donde los estados ocultos actúen como embeddings latentes estructurados, evaluar su desempeño en tareas de predicción a largo plazo frente a técnicas determinísticas actuales (PatchTST, DLinear, TimeMixer, TimeXer), y analizar los trade-offs entre complejidad computacional, ratio de compresión e interpretabilidad de regímenes.
+
+### Pregunta de Investigación
+
+¿Pueden los estados ocultos de un Hidden Markov Model actuar como embeddings latentes estructurados que capturen dependencias temporales y regímenes estadísticos de manera más efectiva que las técnicas determinísticas actuales de tokenización para la predicción de series temporales univariadas en el contexto de modelos de lenguaje?
+
+Para más detalles, consulta `Anteproyecto-RITMO.md`.
+
+## Estructura del Repositorio
+
+```
+RITMO/
+├── models/                  # Modelos baseline del TFG (4 modelos)
+│   ├── __init__.py         # Inicialización del módulo
+│   ├── DLinear.py          # Baseline 1: Descomposición + Linear
+│   ├── PatchTST.py         # Baseline 2: Patch-based Transformer
+│   ├── TimeMixer.py        # Baseline 3: Multi-scale mixing
+│   └── TimeXer.py          # Baseline 4: Exogenous variables
+│
+├── layers/                  # Componentes compartidos de redes neuronales
+│   ├── Embed.py            # PatchEmbedding, DataEmbedding_wo_pos, etc.
+│   ├── Transformer_EncDec.py # Encoder, EncoderLayer
+│   ├── SelfAttention_Family.py # FullAttention, AttentionLayer
+│   ├── Autoformer_EncDec.py # series_decomp, moving_avg
+│   ├── StandardNorm.py     # Normalize (RevIN-style)
+│   └── [otros componentes] # Más layers disponibles
+│
+├── exp/                     # Clases de experimentación
+│   ├── exp_basic.py        # Clase base con registro de modelos
+│   ├── exp_long_term_forecasting.py # Experimentos long-term
+│   ├── exp_short_term_forecasting.py
+│   ├── exp_imputation.py
+│   ├── exp_anomaly_detection.py
+│   └── exp_classification.py
+│
+├── data_provider/          # Carga y procesamiento de datos
+│   ├── data_factory.py     # Factory pattern para datasets
+│   ├── data_loader.py      # Loaders para ETT, Weather, etc.
+│   ├── m4.py               # Dataset M4
+│   └── uea.py              # Dataset UEA
+│
+├── utils/                   # Utilidades generales
+│   ├── metrics.py          # MSE, MAE, RMSE, MAPE, MSPE
+│   ├── tools.py            # Funciones helper
+│   ├── timefeatures.py     # Codificación temporal
+│   ├── augmentation.py     # Data augmentation
+│   └── losses.py           # Funciones de pérdida
+│
+├── scripts/                 # Scripts de ejecución (26 scripts)
+│   ├── long_term_forecast/ # Scripts para forecasting
+│   │   ├── ETT_script/     # ETTh1, ETTh2 (7 scripts)
+│   │   ├── ECL_script/     # Electricity (4 scripts)
+│   │   ├── Weather_script/ # Weather (3 scripts)
+│   │   ├── Traffic_script/ # Traffic (3 scripts)
+│   │   └── Exchange_script/# Exchange (1 script)
+│   └── exogenous_forecast/ # Scripts TimeXer con variables exógenas
+│       ├── ETTh1/
+│       ├── ETTh2/
+│       ├── ECL/
+│       ├── Traffic/
+│       └── Weather/
+│
+├── tutorial/               # Tutorial y recursos
+│   └── TimesNet_Tutorial.ipynb
+│
+├── pic/                    # Imágenes del README
+│
+├── dataset/                # Datasets (no incluidos, descargar aparte)
+│   ├── ETT-small/          # ETTh1, ETTh2, ETTm1, ETTm2
+│   ├── weather/
+│   ├── electricity/
+│   ├── traffic/
+│   └── exchange/
+│
+├── .claude/                # Configuración Claude Code
+│   └── settings.local.json
+├── run.py                  # Script principal de ejecución
+├── requirements.txt        # Dependencias Python (DESACTUALIZADO)
+├── environment.yml         # Especificación Conda (USAR ESTE)
+├── Anteproyecto-RITMO.md  # Documento del TFG
+├── README.md               # Información del proyecto
+└── CLAUDE.md               # Esta guía de desarrollo
+```
+
+## Modelos Baseline
+
+### 1. DLinear (Zeng et al., 2023)
+**Archivo:** `models/DLinear.py`
+
+Baseline simple que demuestra que descomposición + capas lineales puede superar a transformers complejos.
+
+**Características:**
+- Descomposición serie temporal (trend + seasonal)
+- Dos capas lineales separadas
+- Channel-independent modeling
+- Extremadamente eficiente
+
+**Dependencias:**
+- `layers.Autoformer_EncDec.series_decomp`
+
+### 2. PatchTST (Nie et al., 2023)
+**Archivo:** `models/PatchTST.py`
+
+Baseline principal con patch-based tokenization que reduce complejidad de O(L²) a O((L/S)²).
+
+**Características:**
+- Segmentación en patches como tokens
+- Encoder-only Transformer
+- Channel-independence
+- Normalización Non-stationary
+
+**Dependencias:**
+- `layers.Transformer_EncDec.Encoder`, `EncoderLayer`
+- `layers.SelfAttention_Family.FullAttention`, `AttentionLayer`
+- `layers.Embed.PatchEmbedding`
+
+### 3. TimeMixer (Wang et al., 2024)
+**Archivo:** `models/TimeMixer.py`
+
+Baseline con descomposición multi-escala y mixing operations.
+
+**Características:**
+- Past Decomposable Mixing (PDM)
+- Multi-scale processing con down-sampling
+- Soporta moving avg y DFT decomposition
+- Channel independence/dependence configurable
+
+**Dependencias:**
+- `layers.Autoformer_EncDec.series_decomp`
+- `layers.Embed.DataEmbedding_wo_pos`
+- `layers.StandardNorm.Normalize`
+
+### 4. TimeXer (Wang et al., 2024)
+**Archivo:** `models/TimeXer.py`
+
+Baseline para forecasting con variables exógenas.
+
+**Características:**
+- Paradigma exogenous variable forecasting
+- Embeddings endógenos y exógenos
+- Global token mechanism
+- Cross-attention entre variables
+
+**Dependencias:**
+- `layers.SelfAttention_Family.FullAttention`, `AttentionLayer`
+- `layers.Embed.DataEmbedding_inverted`, `PositionalEmbedding`
+
+## Datasets del TFG
+
+### Datasets de Entrenamiento HMM (4)
+
+1. **ETTh1** - Electric Transformer Temperature (hourly)
+   - 7 características, frecuencia horaria
+   - Split 7:1:2 (train/val/test)
+   - Benchmark universal
+
+2. **ETTh2** - Electric Transformer Temperature (hourly)
+   - Variante con distribution shift
+   - Valida robustez de RevIN
+
+3. **Weather** - Temperatura wet-bulb
+   - Regímenes climáticos estacionales claros
+   - Ideal para evaluar cambios de régimen
+
+4. **Electricity (ECL)** - Consumo eléctrico MT_320
+   - Periodicidad diaria fuerte (24h)
+   - Patrones día/noche claros
+
+### Datasets Zero-Shot (2)
+
+5. **Traffic** - Ocupación sensores de tráfico
+   - Dominio diferente, sin re-entrenamiento
+   - Regímenes rush-hour explícitos
+
+6. **Exchange** - Tipos de cambio
+   - Series financieras sin periodicidad marcada
+   - Test de robustez para HMM
+
+**Nota:** Los datasets deben descargarse desde Google Drive o Baidu Drive según README.md original.
+
+## Metodología del TFG
+
+### Pipeline RITMO Propuesto
+
+```
+1. NORMALIZACIÓN (RevIN)
+   └── X_norm = (X - μ) / σ
+       ↓
+2. ENTRENAMIENTO HMM (Baum-Welch)
+   ├── Sobre datasets: ETTh1, ETTh2, Weather, Electricity
+   ├── Estima parámetros λ* = (A*, B*, π*)
+   └── Emisiones gaussianas N(μ_k, σ²_k)
+       ↓
+3. TOKENIZACIÓN (Viterbi)
+   ├── Q* = argmax_Q P(Q|O, λ*)
+   └── Secuencia [z₁, z₂, ..., z_T]
+       ↓
+4. EMBEDDINGS ESTRUCTURADOS
+   ├── e_k = [μ_k, σ_k, A[k,:]]
+   ├── μ_k: centro del régimen
+   ├── σ_k: volatilidad del régimen
+   └── A[k,:]: dinámicas de transición
+       ↓
+5. PREDICCIÓN (Transformer)
+   ├── ŷ_norm = Transformer([e_{z₁}, ..., e_{z_I}])
+   └── ŷ = ŷ_norm × σ + μ
+```
+
+### Configuración Experimental
+
+- **Input length:** I = 96 timesteps
+- **Prediction horizons:** O ∈ {96, 192, 336, 720}
+- **Métricas:** MSE, MAE
+- **Comparación:** 4 baselines en 6 datasets
+
+## Estándares de Desarrollo
+
+### Estilo de Código
+
+```python
+# Convenciones de nombres
+nombre_variable = "ejemplo"       # snake_case para variables/funciones
+class GestorUsuario:              # PascalCase para clases
+MAX_REINTENTOS = 3                # UPPER_CASE para constantes
+_metodo_interno()                 # Guión bajo para privados
+
+# Type hints requeridos
+def procesar_datos(datos: List[Dict]) -> pd.DataFrame:
+    """Procesar con tipos claros."""
+
+# Docstrings obligatorios
+def extraer_datos(liga: str, temporada: str) -> Dict[str, Any]:
+    """
+    Extrae datos de la fuente.
+
+    Args:
+        liga: Identificador de liga (ej: 'ESP-La Liga')
+        temporada: Temporada en formato YY-YY (ej: '23-24')
+
+    Returns:
+        Diccionario con datos extraídos
+
+    Raises:
+        ValueError: Si liga o temporada inválidas
+    """
+```
+
+### Manejo de Errores
+
+```python
+# Manejo específico de excepciones
+try:
+    datos = scraper.extraer()
+except ConnectionError as e:
+    logger.error(f"Error de red: {e}")
+    return datos_cacheados
+except ValueError as e:
+    logger.error(f"Validación de datos falló: {e}")
+    raise
+```
+
+## Gestión del Entorno
+
+### Entorno Conda 'ritmo'
+
+**Instalación inicial:**
+
+```bash
+# Opción 1: Desde environment.yml (recomendado)
+conda env create -f environment.yml
+
+# Opción 2: Manual
+conda create -n ritmo python=3.10 -y
+conda activate ritmo
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+pip install -r requirements.txt  # Después de actualizar versiones
+```
+
+**Workflow diario:**
+
+```bash
+# Activar el entorno
+conda activate ritmo
+
+# Verificar instalación
+python -c "import torch; print(torch.__version__)"
+python -c "from models import DLinear, PatchTST, TimeMixer, TimeXer"
+
+# Trabajar en el proyecto
+python run.py --model PatchTST --data ETTh1 --task_name long_term_forecast
+
+# Desactivar al terminar
+conda deactivate
+```
+
+**Gestión del entorno:**
+
+```bash
+# Ver paquetes instalados
+conda list
+
+# Actualizar entorno tras cambios
+conda env update -f environment.yml --prune
+
+# Exportar configuración actual
+conda env export > environment_backup.yml
+
+# Eliminar entorno
+conda env remove -n ritmo
+```
+
+### Dependencias Principales
+
+**PyTorch y Científico:**
+- torch==2.9.0+cpu (PyTorch 2.x CPU)
+- numpy>=2.1.2
+- pandas>=2.3.3
+- scikit-learn>=1.7.2
+- scipy>=1.15.3
+- matplotlib>=3.10.7
+
+**Time Series Específico:**
+- einops==0.8.0
+- local-attention==1.9.14
+- reformer-pytorch==1.4.4
+- sktime>=0.39.0
+- PyWavelets>=1.8.0
+
+**Utilidades:**
+- tqdm>=4.67.1
+- patool>=4.0.1
+
+**Nota:** El archivo `requirements.txt` original tiene versiones antiguas (torch==1.7.1). Usar `environment.yml` que tiene versiones actualizadas.
+
+## Ejecución de Experimentos
+
+### Script Principal (run.py)
+
+```bash
+# Ejecución básica
+python run.py \
+  --model PatchTST \
+  --data ETTh1 \
+  --task_name long_term_forecast \
+  --seq_len 96 \
+  --pred_len 96 \
+  --features S
+
+# Parámetros principales
+--model: DLinear | PatchTST | TimeMixer | TimeXer
+--data: ETTh1 | ETTh2 | Weather | Electricity | Traffic | Exchange
+--task_name: long_term_forecast (otros: short_term, imputation, etc.)
+--seq_len: Longitud de entrada (default: 96)
+--pred_len: Horizonte de predicción (96 | 192 | 336 | 720)
+--features: S (univariate) | M (multivariate) | MS (multi-to-uni)
+
+# GPU
+--use_gpu: True | False
+--gpu: 0 (número de GPU)
+--use_multi_gpu: Para múltiples GPUs
+```
+
+### Scripts de Shell
+
+```bash
+# Ejecutar script de dataset específico
+bash scripts/long_term_forecast/ETT_script/PatchTST_ETTh1.sh
+bash scripts/long_term_forecast/Weather_script/TimeMixer.sh
+
+# Los scripts ya tienen configuración óptima:
+# - Input length: 96
+# - Prediction lengths: 96, 192, 336, 720
+# - Features: S (univariate para TFG)
+# - Múltiples experimentos secuenciales
+```
+
+## Workflow de Git
+
+### Estrategia de Ramas
+
+```
+main (rama protegida)
+  ├── feature/hmm-tokenization
+  ├── feature/embedding-generation
+  ├── fix/viterbi-optimization
+  └── docs/update-methodology
+```
+
+### Convenciones de Nombres de Ramas
+
+- `feature/` - Nueva funcionalidad
+- `fix/` - Corrección de bugs
+- `docs/` - Actualizaciones de documentación
+- `refactor/` - Mejoras de código sin cambiar funcionalidad
+- `test/` - Adiciones o modificaciones de tests
+- `experiment/` - Experimentos específicos del TFG
+
+### Flujo de Trabajo
+
+```bash
+# 1. Comenzar nueva tarea - siempre desde main
+git checkout main
+git pull origin main
+git checkout -b feature/hmm-implementation
+
+# 2. Trabajo con commits incrementales
+git add -p  # Revisar cambios pieza por pieza
+git commit -m "feat: añadir estructura base para HMM"
+git commit -m "feat: implementar algoritmo Baum-Welch"
+git commit -m "feat: añadir Viterbi para tokenización"
+
+# 3. Mantener rama actualizada con main
+git fetch origin
+git rebase origin/main
+
+# 4. Push a remoto
+git push origin feature/hmm-implementation
+
+# 5. Después de aprobar y mergear
+git checkout main
+git pull origin main
+git branch -d feature/hmm-implementation
+```
+
+### Formato de Mensajes de Commit
+
+Seguir especificación de conventional commits:
+
+```bash
+# Formato: <tipo>(<ámbito>): <asunto>
+
+# Tipos
+feat: Nueva funcionalidad
+fix: Corrección de bug
+docs: Cambios en documentación
+style: Cambios de estilo de código
+refactor: Cambios que no arreglan bugs ni añaden features
+perf: Mejoras de rendimiento
+test: Añadir o modificar tests
+chore: Tareas de mantenimiento
+
+# Ejemplos para TFG
+git commit -m "feat(hmm): implementar Baum-Welch con emisiones gaussianas"
+git commit -m "fix(viterbi): corregir cálculo de probabilidades de transición"
+git commit -m "docs: actualizar metodología en Anteproyecto-RITMO.md"
+git commit -m "experiment: evaluar K=5 estados en ETTh1"
+```
+
+## Configuración Claude Code
+
+### Setup Inicial
+
+```bash
+# Saltar prompts de permisos para workflow más rápido
+claude --dangerously-skip-permissions
+
+# Configurar terminal para mejor experiencia
+/terminal-setup
+
+# Limpiar chat entre diferentes tareas
+/clear
+```
+
+### Mejores Prácticas
+
+**Operaciones con Archivos:**
+- Shift+drag para referenciar archivos (no drag regular)
+- Control+V para pegar imágenes (no Command+V)
+- Usar `@filename` para referenciar archivos específicos
+
+**Gestión del Chat:**
+- Encolar múltiples prompts para procesamiento en lote
+- Escape para detener Claude (no Control+C)
+- Escape dos veces para ver historial de mensajes
+- Flecha arriba para navegar comandos previos
+
+### Contexto del Proyecto (CLAUDE.md)
+
+Los archivos CLAUDE.md proporcionan contexto de proyecto jerárquicamente:
+- `CLAUDE.md` raíz - Overview del proyecto y estándares
+- `README.md` de subdirectorio - Guías específicas de módulo
+- Los archivos más específicos tienen precedencia
+
+## Métricas de Evaluación
+
+### Métricas Principales
+
+```python
+# Implementadas en utils/metrics.py
+
+MSE  = Mean Squared Error (métrica principal)
+MAE  = Mean Absolute Error (métrica principal)
+RMSE = Root Mean Squared Error
+MAPE = Mean Absolute Percentage Error
+MSPE = Mean Squared Percentage Error
+```
+
+### Protocolo de Evaluación TFG
+
+1. **Desempeño predictivo:**
+   - MSE y MAE promediados sobre horizontes O ∈ {96, 192, 336, 720}
+   - Input fijo I=96
+   - Reportar por dataset y promedio general
+
+2. **Ratio de compresión:**
+   - Timesteps originales / tokens generados
+   - Para HMM: número de cambios de estado (Viterbi)
+   - Para PatchTST: T/P con P=16
+
+3. **Eficiencia computacional:**
+   - Tiempo de entrenamiento por epoch
+   - Tiempo de inferencia por muestra
+   - Throughput (muestras/segundo)
+
+4. **Interpretabilidad de regímenes (solo HMM):**
+   - Distribución temporal de activaciones
+   - Interpretación de parámetros (μ_k, σ_k)
+   - Estructura de transiciones en matriz A
+
+## Referencias
+
+### Documentación Interna
+
+- **Anteproyecto TFG**: `Anteproyecto-RITMO.md` - Metodología completa
+- **README Original**: `README.md` - Información Time-Series-Library
+- **Environment**: `environment.yml` - Especificación completa del entorno
+
+### Recursos Externos
+
+- **Time-Series-Library**: https://github.com/thuml/Time-Series-Library
+- **Papers de Modelos:**
+  - PatchTST: Nie et al., 2023
+  - DLinear: Zeng et al., 2023
+  - TimeMixer: Wang et al., 2024
+  - TimeXer: Wang et al., 2024
+- **HMM Theory:**
+  - Rabiner, 1989 - Tutorial on HMMs
+  - Hamilton, 1989 - Markov-Switching models
+  - Dempster et al., 1977 - EM Algorithm
+
+### Papers Clave del Estado del Arte
+
+**Surveys:**
+- Wen et al., 2023 - Transformers in Time Series: A Survey
+- Zhang et al., 2024 - Large Language Models for Time Series
+- Liang et al., 2024 - Foundation Models for Time Series
+
+**Tokenización:**
+- Lin et al., 2007 - SAX (Symbolic Aggregate approXimation)
+- Ansari et al., 2024 - Chronos: Learning the Language of Time Series
+- Talukder et al., 2024 - TOTEM: TOkenized Time Series Embeddings
+
+**Benchmarks:**
+- Zhou et al., 2021 - Informer (protocolo experimental estándar)
+- Wang et al., 2025 - Accuracy Law (saturación de benchmarks)
+
+## Guía de Troubleshooting
+
+### Problemas Comunes
+
+**1. Error de importación de modelos:**
+```bash
+# Verificar que estás en el entorno correcto
+conda activate ritmo
+python -c "from models import DLinear, PatchTST, TimeMixer, TimeXer"
+```
+
+**2. Error "No module named torch":**
+```bash
+# Reinstalar PyTorch
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+```
+
+**3. Dataset no encontrado:**
+```bash
+# Verificar estructura de directorios
+ls -la dataset/
+# Descargar datasets según README.md original
+```
+
+**4. CUDA out of memory (si usas GPU):**
+```bash
+# Reducir batch size en script
+--batch_size 16  # Default: 32
+```
+
+**5. Versiones incompatibles:**
+```bash
+# Recrear entorno desde environment.yml
+conda env remove -n ritmo
+conda env create -f environment.yml
+```
+
+## Progreso del TFG
+
+### Fase Actual: Preparación del Entorno
+
+✅ **Completado:**
+- Limpieza del repositorio (29 modelos eliminados → 4 baselines)
+- Eliminación de scripts no usados (265 → 26 scripts)
+- Actualización de exp_basic.py
+- Creación de entorno conda 'ritmo' con Python 3.10
+- Instalación de PyTorch 2.9.0 (CPU)
+- Instalación de todas las dependencias
+- Verificación de imports de modelos
+- Creación de environment.yml
+- Actualización de CLAUDE.md
+
+### Próximos Pasos
+
+1. **Descarga de Datasets** (Fase 1)
+   - Descargar ETTh1, ETTh2, Weather, Electricity, Traffic, Exchange
+   - Verificar estructura de datos
+   - Comprobar splits train/val/test
+
+2. **Experimentos Baseline** (Fase 2)
+   - Ejecutar 4 modelos en 6 datasets
+   - Horizontes: 96, 192, 336, 720
+   - Recopilar métricas MSE/MAE
+
+3. **Implementación HMM** (Fase 3)
+   - Implementar algoritmo Baum-Welch
+   - Implementar algoritmo Viterbi
+   - Generar embeddings e_k = [μ_k, σ_k, A[k,:]]
+
+4. **Integración y Evaluación** (Fase 4)
+   - Integrar HMM en pipeline
+   - Comparar con baselines
+   - Análisis de resultados
+
+5. **Redacción y Defensa** (Fase 5)
+   - Memoria final del TFG
+   - Preparación de presentación
+   - Defensa ante tribunal
+
+---
+
+**Recuerda**: Esta guía es la fuente única de verdad para el desarrollo del TFG RITMO. Mantenla actualizada a medida que el proyecto evoluciona. Cuando uses Claude Code, referencia esta guía para prácticas de desarrollo consistentes.
