@@ -25,17 +25,22 @@
 - Entrenamiento HMM: ETTh1, ETTh2, Weather, Electricity
 - Evaluación zero-shot: Traffic, Exchange
 
-### Código Faltante (60% del pipeline)
+### Progreso Implementación (60% completado)
 
-**Módulo HMM (0% implementado):**
-- Algoritmo Forward-Backward
-- Algoritmo Baum-Welch (EM)
-- Algoritmo de Viterbi
-- Emisiones gaussianas
-- Inicialización k-means
-- Sistema guardado/carga parámetros
+**✓ Módulo HMM (100% implementado):**
+- ✓ Algoritmo Forward-Backward (hmm/forward_backward.py)
+- ✓ Algoritmo Baum-Welch EM (hmm/baum_welch.py)
+- ✓ Algoritmo de Viterbi (hmm/viterbi.py)
+- ✓ Emisiones gaussianas (hmm/gaussian_emissions.py)
+- ✓ Inicialización k-means (hmm/utils.py)
+- ✗ Sistema guardado/carga parámetros (pendiente)
 
-**Módulo Embeddings (0% implementado):**
+**✓ Módulo RevIN (100% implementado):**
+- ✓ RevINNormalizer con gestión train/val/test (utils/revin.py)
+- ✓ Validación reconstrucción norm→denorm
+- ✓ Test con ETTh1 real validado
+
+**→ Módulo Embeddings (0% implementado - SIGUIENTE):**
 - Generación embeddings estructurados e_k = [μ_k, σ_k, A[k,:]]
 - Mapeo tokens a embeddings
 - Adaptador para Transformer

@@ -67,7 +67,16 @@ RITMO/
 │   ├── tools.py            # Funciones helper
 │   ├── timefeatures.py     # Codificación temporal
 │   ├── augmentation.py     # Data augmentation
+│   ├── revin.py            # RevINNormalizer (TFG RITMO)
 │   └── losses.py           # Funciones de pérdida
+│
+├── hmm/                     # Módulo HMM para TFG RITMO
+│   ├── __init__.py         # Exporta baum_welch, viterbi_decode
+│   ├── utils.py            # log_normalize, initialize_kmeans
+│   ├── gaussian_emissions.py # Emisiones gaussianas
+│   ├── forward_backward.py # Algoritmo Forward-Backward (E-step)
+│   ├── baum_welch.py       # Algoritmo EM para HMM
+│   └── viterbi.py          # Decodificación óptima de estados
 │
 ├── scripts/                 # Scripts de ejecución (26 scripts)
 │   ├── long_term_forecast/ # Scripts para forecasting
