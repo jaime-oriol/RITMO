@@ -42,8 +42,10 @@
 
 **→ Módulo Embeddings (0% implementado - SIGUIENTE):**
 - Generación embeddings estructurados e_k = [μ_k, σ_k, A[k,:]]
-- Mapeo tokens a embeddings
-- Adaptador para Transformer
+- Mapeo tokens a embeddings (lookup table)
+- Projection layer: Linear(2+K, d_model)
+- Integración con PositionalEmbedding
+- Gestión parámetros frozen (HMM) vs learnable (projection)
 
 **Modelo RITMO (0% implementado):**
 - Integración pipeline completo
@@ -67,6 +69,28 @@
 3. Tokenización (Viterbi): Q* = argmax_Q P(Q|O, λ*)
 4. Generación embeddings: e_k = [μ_k, σ_k, A[k,:]]
 5. Predicción Transformer: ŷ_norm = Transformer([e_{z₁}, ..., e_{z_I}])
+
+**IMPORTANTE: Dos Conceptos de "Token" en RITMO**
+
+El término "token" tiene dos significados diferentes en este proyecto:
+
+1. **Token para LLM** (Viterbi output):
+   - Cada timestep → 1 token (estado k ∈ {0..K-1})
+   - Serie continua [14.5, 14.7, 15.2, ...] → Secuencia discreta [2, 2, 1, ...]
+   - Total: T tokens (mismo tamaño que serie original)
+   - **Propósito:** Convertir valores continuos en símbolos discretos para procesamiento LLM
+
+2. **Segmentos para compresión** (cambios de régimen):
+   - Número de transiciones entre estados diferentes
+   - Ejemplo: [2, 2, 2, 1, 1, 3, ...] → 3 segmentos (2 transiciones)
+   - Ratio compresión = T / n_segmentos
+   - **Propósito:** Medir eficiencia de captura de patrones temporales
+   - **Según Anteproyecto línea 354:** "Para HMM corresponde al número de cambios de estado detectados por Viterbi"
+
+**Nomenclatura en código:**
+- `n_tokens_llm = len(states_pred)` → Tokens para LLM (T timesteps)
+- `n_segments = np.sum(np.diff(states_pred) != 0) + 1` → Segmentos/regímenes
+- `compression_ratio = T / n_segments` → Ratio de compresión
 
 **Configuración Experimental:**
 - Input length: I = 96 timesteps
@@ -127,28 +151,61 @@ hmm/
 - Validar convergencia Baum-Welch
 - Validar precisión Viterbi
 
-### Fase 2: Implementar Módulo Embeddings
+### Fase 2: Implementar Módulo Embeddings Estructurados
 
-**2.1 Crear estructura de directorios:**
+**2.1 Estructura de directorios:**
 ```
 embeddings/
 ├── __init__.py
-├── hmm_embedding.py
-└── embedding_adapter.py
+└── embedding_generator.py
 ```
 
-**2.2 Clase EmbeddingGenerator:**
-- Input: secuencia tokens Q* = [z₁, ..., z_T]
-- Input: parámetros HMM λ* = (A*, B*, π*)
-- Construcción e_k = [μ_k, σ_k, A[k,:]] ∈ R^(2+K)
-- Lookup table: {k → e_k} para k=1..K
-- Output: [e_{z₁}, ..., e_{z_T}] shape (batch_size, seq_len, 2+K)
+**2.2 Implementar EmbeddingGenerator:**
 
-**2.3 Adaptador para Transformer:**
-- Projection layer: nn.Linear(2+K, d_model)
-- Integración con PositionalEmbedding (reutilizar layers/Embed.py)
-- Dropout configurable
-- Output: embeddings listos para Transformer
+**Input shape:**
+- `tokens`: (batch_size, seq_len) - secuencia de estados k ∈ {0..K-1}
+- `hmm_params`: dict con A, pi, mu, sigma (numpy arrays)
+
+**Output shape:**
+- `embeddings`: (batch_size, seq_len, 2+K) - embeddings estructurados
+
+**Proceso:**
+1. Crear lookup table: `embedding_table[k] = np.concatenate([mu[k], sigma[k], A[k,:]])`
+   - Dimensión por estado: (2 + K)
+   - mu[k]: float - centro del régimen k
+   - sigma[k]: float - volatilidad del régimen k
+   - A[k,:]: array[K] - probabilidades de transición desde k
+
+2. Indexar: `embeddings = embedding_table[tokens]`
+   - Operación vectorizada para batch completo
+
+3. Convertir a torch.Tensor (device-aware)
+
+**Parámetros frozen:**
+- `hmm_params` (A, mu, sigma): **FROZEN** (no gradientes)
+- Rationale: HMM captura estructura temporal, NO debe cambiar durante training Transformer
+
+**2.3 Integración con Transformer:**
+
+**Pipeline completo:**
+```
+1. EmbeddingGenerator: (batch, seq_len) → (batch, seq_len, 2+K)
+2. Projection Layer: (batch, seq_len, 2+K) → (batch, seq_len, d_model)
+3. PositionalEmbedding: (batch, seq_len, d_model) + pos_enc
+4. Dropout(p=0.1)
+5. Output listo para Transformer Encoder
+```
+
+**Parámetros learnable:**
+- `projection_layer.weight`: Linear(2+K, d_model) - **LEARNABLE**
+- `projection_layer.bias`: bias - **LEARNABLE**
+- Rationale: Proyección aprende representación óptima para predicción
+
+**Consideraciones de diseño:**
+- d_model debe ser ≥ 2+K para evitar pérdida de información
+- Recomendación: d_model = max(128, 2+K)
+- No se concatena pos_enc antes de projection, se suma después
+- Cache embeddings si dataset cabe en memoria (ETTh1: ~8K timesteps OK)
 
 ### Fase 3: Crear Modelo RITMO
 
@@ -200,22 +257,64 @@ data_provider/data_loader_ritmo.py
 
 ### Fase 5: Entrenamiento y Evaluación RITMO
 
-**5.1 Entrenamiento modelo RITMO:**
-- Reutilizar exp/exp_long_term_forecasting.py
-- Configurar hiperparámetros Transformer (capas, heads, d_model)
-- Early stopping con validación
-- Ajuste learning rate automático
+**5.1 Configuración Transformer RITMO:**
 
-**5.2 Evaluación en datasets benchmark:**
+**Arquitectura base (inspirada en PatchTST):**
+- `d_model`: max(128, 2+K) - Asegurar ≥ dimensión embeddings
+- `n_layers`: 3 - Encoder layers
+- `n_heads`: 8 - Attention heads
+- `d_ff`: 256 - Feedforward dimension (2×d_model típicamente)
+- `dropout`: 0.1 - Regularización
+- `activation`: 'gelu' - Función activación
+
+**Projection head para predicción:**
+- Input: (batch, seq_len, d_model) - Output encoder
+- Pooling: mean over seq_len → (batch, d_model)
+  - Alternativa: usar solo último timestep (batch, d_model)
+- MLP: Linear(d_model, 128) → ReLU → Dropout(0.1) → Linear(128, pred_len)
+- Output: (batch, pred_len) - Predicción horizonte O
+
+**Hiperparámetros training:**
+- `batch_size`: 32
+- `learning_rate`: 1e-4 (AdamW optimizer)
+- `warmup_epochs`: 10% del total (típicamente 3-5 epochs)
+- `early_stopping_patience`: 10 epochs (monitor val_loss)
+- `max_epochs`: 100
+- `weight_decay`: 1e-4 (regularización L2)
+
+**5.2 Entrenamiento modelo RITMO:**
+- Reutilizar exp/exp_long_term_forecasting.py
+- Modificar solo DataLoader (usar embeddings pre-generados)
+- Early stopping automático con validación
+- Learning rate schedule: ReduceLROnPlateau(factor=0.5, patience=5)
+- Checkpoint best model según val_loss
+
+**5.3 Evaluación en datasets benchmark:**
 - ETTh1, ETTh2, Weather, Electricity (entrenamiento HMM)
 - Horizontes: O ∈ {96, 192, 336, 720}
 - Métricas: MSE, MAE
 - Comparación con baselines (ya entrenados)
+- Reportar promedio sobre 4 horizontes (formato TSLib)
 
-**5.3 Evaluación zero-shot:**
-- Traffic, Exchange (sin re-entrenamiento HMM)
-- HMM frozen con parámetros λ* entrenados
-- Validar generalización a dominios diferentes
+**5.4 Protocolo evaluación zero-shot:**
+
+**Datasets zero-shot (Traffic, Exchange):**
+
+1. Cargar HMM params λ* entrenado en {ETTh1, ETTh2, Weather, Electricity}
+2. **NO** re-entrenar HMM (params frozen)
+3. Aplicar RevIN específico de Traffic/Exchange (fit en train split)
+   - Cada dataset tiene su propio μ, σ para RevIN
+4. Viterbi tokenización con λ* frozen
+5. Generar embeddings con λ* frozen
+6. Entrenar **solo** Transformer (projection + encoder + head)
+   - HMM params NO tienen gradientes
+7. Evaluar MSE/MAE en test split
+
+**Validaciones zero-shot:**
+- Verificar `log_likelihood(Traffic|λ*)` es razonable (no NaN/Inf)
+- Comparar compresión ratio con datasets in-domain
+- Analizar si estados activos son consistentes
+- Reportar performance degradation vs. in-domain
 
 **5.4 Análisis de trade-offs:**
 - Ratio compresión: timesteps originales / número tokens (cambios de estado)
