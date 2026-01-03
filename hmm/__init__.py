@@ -10,7 +10,9 @@ Referencias:
 """
 
 from .baum_welch import baum_welch
-from .viterbi import viterbi_decode
+from .viterbi import viterbi_decode, viterbi_batch
 from .forward_backward import forward_backward
+from .checkpoint import save_hmm_params, load_hmm_params
 
-__all__ = ['baum_welch', 'viterbi_decode', 'forward_backward']
+__all__ = ['baum_welch', 'viterbi_decode', 'viterbi_batch', 'forward_backward',
+           'save_hmm_params', 'load_hmm_params']
