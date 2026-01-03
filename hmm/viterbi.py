@@ -101,3 +101,56 @@ def viterbi_decode(observations: np.ndarray,
         state_sequence[t] = psi[t+1, state_sequence[t+1]]
 
     return state_sequence, log_likelihood
+
+
+def viterbi_batch(observations: np.ndarray,
+                  A: np.ndarray,
+                  pi: np.ndarray,
+                  mu: np.ndarray,
+                  sigma: np.ndarray) -> np.ndarray:
+    """
+    Decodifica batch de secuencias mediante algoritmo de Viterbi.
+
+    Procesa múltiples series temporales en paralelo, aplicando viterbi_decode
+    a cada serie del batch de forma independiente.
+
+    Args:
+        observations: Batch de series temporales [B, T] o [B, T, 1]
+        A: Matriz de transición [K, K]
+        pi: Distribución inicial [K]
+        mu: Medias gaussianas [K]
+        sigma: Desviaciones estándar [K]
+
+    Returns:
+        state_sequences: [B, T] array de secuencias de estados (0..K-1)
+
+    Raises:
+        ValueError: Si dimensiones son inconsistentes o batch vacío
+
+    Ejemplo:
+        >>> batch_obs = np.random.randn(8, 96)  # batch=8, seq_len=96
+        >>> A = np.array([[0.7, 0.3], [0.4, 0.6]])
+        >>> pi = np.array([0.5, 0.5])
+        >>> mu = np.array([1.0, 5.0])
+        >>> sigma = np.array([0.5, 0.5])
+        >>> states = viterbi_batch(batch_obs, A, pi, mu, sigma)
+        >>> states.shape  # (8, 96)
+    """
+    if observations.ndim == 3:
+        observations = observations.squeeze(-1)
+
+    if observations.ndim != 2:
+        raise ValueError(f"observations debe ser [B,T] o [B,T,1], recibido: {observations.shape}")
+
+    B, T = observations.shape
+
+    if B == 0:
+        raise ValueError("Batch vacío")
+
+    state_sequences = np.zeros((B, T), dtype=int)
+
+    for b in range(B):
+        states, _ = viterbi_decode(observations[b], A, pi, mu, sigma)
+        state_sequences[b] = states
+
+    return state_sequences
