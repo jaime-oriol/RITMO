@@ -77,6 +77,7 @@ def baum_welch(observations: np.ndarray,
 
     # Log-verosimilitud inicial
     log_likelihood_prev = -np.inf
+    log_likelihoods = []  # Historial de convergencia
     converged = False
 
     # ========== 3. LOOP EM ==========
@@ -89,6 +90,7 @@ def baum_welch(observations: np.ndarray,
         # γ_t(k) = P(q_t=k|O,λ): Probabilidad estado k en timestep t
         # ξ_t(k,l) = P(q_t=k, q_{t+1}=l|O,λ): Probabilidad transición k→l
         gamma, xi, log_likelihood = forward_backward(observations, A, pi, mu, sigma)
+        log_likelihoods.append(log_likelihood)
 
         # ===== M-STEP: Re-estimación de parámetros =====
 
@@ -148,6 +150,7 @@ def baum_welch(observations: np.ndarray,
         'mu': mu,
         'sigma': sigma,
         'log_likelihood': log_likelihood,
+        'log_likelihoods': log_likelihoods,
         'converged': converged,
         'n_iter': iteration + 1
     }
