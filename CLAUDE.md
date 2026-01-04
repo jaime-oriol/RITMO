@@ -80,6 +80,31 @@ RITMO/
 │   ├── baum_welch.py       # Algoritmo EM para HMM
 │   └── viterbi.py          # Decodificación óptima de estados
 │
+├── embeddings/              # Generación de embeddings estructurados
+│   ├── __init__.py         # Exporta EmbeddingGenerator
+│   └── embedding_generator.py # e_k = [μ_k, σ_k, A[k,:]]
+│
+├── tecnicas/                # Implementaciones de 6 técnicas de tokenización
+│   ├── foundation.py       # MOMENT (masked patches)
+│   ├── sax.py              # SAX (symbolic discretization)
+│   ├── llmtime.py          # LLMTime (text-based)
+│   ├── patch.py            # PatchTST (non-overlapping patches)
+│   ├── autoformer.py       # Autoformer (trend-seasonal decomposition)
+│   ├── Electricity_tokenization.ipynb # Comparación en Electricity
+│   ├── ETTh2_tokenization.ipynb       # Comparación en ETTh2
+│   └── figures/            # Exportación automática de visualizaciones
+│
+├── notebooks/               # Notebooks de validación
+│   ├── RITMO_pipeline_validation.ipynb # Validación 4 fases
+│   └── figures/            # Figuras del pipeline
+│
+├── md/                      # Documentación técnica
+│   ├── RITMO_VALIDACION.md # Validación del pipeline
+│   └── TECNICAS.md         # Comparativa de 6 técnicas
+│
+├── cache/                   # Cache de parámetros entrenados
+│   └── hmm_*.pth           # Parámetros HMM por dataset
+│
 ├── scripts/                 # Scripts de ejecución (26 scripts)
 │   ├── long_term_forecast/ # Scripts para forecasting
 │   │   ├── ETT_script/     # ETTh1, ETTh2 (7 scripts)
@@ -246,6 +271,154 @@ Baseline para forecasting con variables exógenas.
 - **Prediction horizons:** O ∈ {96, 192, 336, 720}
 - **Métricas:** MSE, MAE
 - **Comparación:** 4 baselines en 6 datasets
+
+## Módulo de Embeddings
+
+### EmbeddingGenerator
+**Archivo:** `embeddings/embedding_generator.py`
+
+Genera embeddings estructurados desde parámetros HMM entrenados.
+
+**Características:**
+- Concatena estadísticas del régimen (μ_k, σ_k) con dinámicas de transición (A[k,:])
+- Proyección lineal opcional a d_model dimensional
+- Compatible con PyTorch para backpropagation end-to-end
+- Embeddings interpretables vs black-box learnables
+
+**Uso:**
+```python
+from embeddings import EmbeddingGenerator
+
+hmm_params = {'A': A, 'mu': mu, 'sigma': sigma, 'pi': pi}
+emb_gen = EmbeddingGenerator(hmm_params, d_model=128, device='cpu')
+embedding_table = emb_gen.get_embedding_table()  # [K, d_model]
+```
+
+## Notebooks de Validación
+
+### RITMO Pipeline Validation
+**Archivo:** `notebooks/RITMO_pipeline_validation.ipynb`
+
+Notebook de validación exhaustiva del pipeline RITMO en 4 fases:
+
+1. **Fase 1 - RevIN**: Normalización reversible con MSE < 1e-12
+2. **Fase 2 - Baum-Welch**: Convergencia EM con tracking de log-likelihoods
+3. **Fase 3 - Viterbi**: Tokenización óptima con ratio compresión 27x
+4. **Fase 4 - Embeddings**: Visualización embedding space μ-σ + matriz A
+
+**Convenciones:**
+- Auto-save PNG en `notebooks/` (sin PDF)
+- Visualizaciones profesionales con offsets y flechas
+- Cache HMM en `cache/hmm_etth1_K5.pth`
+
+### Notebooks de Técnicas
+**Archivos:** `tecnicas/Electricity_tokenization.ipynb`, `tecnicas/ETTh2_tokenization.ipynb`
+
+Notebooks comparativos de 6 técnicas de tokenización:
+
+1. **HMM (RITMO)** - Estados ocultos con Viterbi
+2. **SAX** - Discretización simbólica gaussiana
+3. **LLMTime** - Serialización text-based
+4. **PatchTST** - Patches non-overlapping
+5. **Autoformer** - Descomposición trend-seasonal
+6. **MOMENT** - Masked patches foundation model
+
+**Convenciones:**
+- Auto-save PNG en cada celda de visualización
+- Figuras exportadas a `tecnicas/figures/`
+- Nombres: `{tecnica}_{dataset}.png`
+
+## Técnicas de Tokenización
+
+### 1. HMM - RITMO (Propuesta del TFG)
+**Archivo:** `hmm/baum_welch.py`, `hmm/viterbi.py`
+
+- Vocabulario: K=5 estados ocultos
+- Compresión: 27x vía run-length encoding
+- Embeddings: [μ_k, σ_k, A[k,:]] interpretables
+
+### 2. SAX - Symbolic Aggregate approXimation
+**Archivo:** `tecnicas/sax.py`
+
+- Vocabulario: 8 símbolos alfabéticos
+- Compresión: 1x (sin compresión)
+- Embeddings: One-hot o learnables
+
+### 3. LLMTime - Text-based
+**Archivo:** `tecnicas/llmtime.py`
+
+- Vocabulario: 13 caracteres (0-9, signo, punto, espacio)
+- Compresión: 0.1x (expansión 10x)
+- Embeddings: Tokenizer pre-entrenado (GPT)
+
+### 4. PatchTST - Patches
+**Archivo:** `tecnicas/patch.py`
+
+- Vocabulario: Continuo (patches R^16)
+- Compresión: 16x (patches no solapados)
+- Embeddings: Proyección lineal
+
+### 5. Autoformer - Decomposition
+**Archivo:** `tecnicas/autoformer.py`
+
+- Vocabulario: 2 componentes (trend + seasonal)
+- Compresión: 750x (compresión extrema)
+- Embeddings: Componentes separados
+
+### 6. MOMENT - Foundation Model
+**Archivo:** `tecnicas/foundation.py`
+
+- Vocabulario: Patches con masking 30%
+- Compresión: 16x (idéntico a PatchTST)
+- Embeddings: Learnables pre-entrenados
+
+## Convenciones de Visualización
+
+### Estándares Profesionales
+
+**Matplotlib setup:**
+```python
+plt.style.use('seaborn-v0_8-paper')
+plt.rcParams['font.family'] = 'serif'
+plt.rcParams['font.size'] = 10
+plt.rcParams['figure.dpi'] = 100
+plt.rcParams['savefig.dpi'] = 300
+plt.rcParams['savefig.bbox'] = 'tight'
+```
+
+**Paleta de colores:**
+- Usar Okabe-Ito (colorblind-friendly)
+- `colors_oi = ['#E69F00', '#56B4E9', '#009E73', '#F0E442', '#0072B2', '#D55E00', '#CC79A7', '#000000']`
+
+**Elementos obligatorios:**
+- Títulos con `fontweight='bold'`
+- Grids con `alpha=0.3`
+- `tight_layout()` antes de guardar
+- Colorbars con labels rotados
+- Anotaciones con bbox para contraste
+
+**Auto-save de figuras:**
+```python
+fig.savefig('figures/{nombre}_{dataset}.png', dpi=300, bbox_inches='tight')
+plt.show()
+```
+
+### Visualizaciones Específicas
+
+**Embedding space:**
+- Scatter μ-σ con círculos proporcionales a volatilidad
+- Anotaciones con offsets estratégicos y flechas
+- Matriz de transiciones con valores anotados
+
+**Convergencia HMM:**
+- Log-likelihood en eje Y izquierdo
+- |ΔLL| en eje Y derecho (escala log)
+- Threshold ε=1e-4 marcado
+
+**Tokenización:**
+- Serie con tokens coloreados
+- Barra compacta de run-length encoding
+- Distribución de frecuencias
 
 ## Estándares de Desarrollo
 
@@ -556,8 +729,12 @@ MSPE = Mean Squared Percentage Error
 ### Documentación Interna
 
 - **Anteproyecto TFG**: `Anteproyecto-RITMO.md` - Metodología completa
+- **Validación Pipeline**: `md/RITMO_VALIDACION.md` - Validación 4 fases con métricas
+- **Comparativa Técnicas**: `md/TECNICAS.md` - Análisis técnico de 6 técnicas
 - **README Original**: `README.md` - Información Time-Series-Library
 - **Environment**: `environment.yml` - Especificación completa del entorno
+
+**Nota sobre documentación:** Los archivos en `md/` usan prosa técnica densa (1-2 líneas por concepto) en lugar de bullet points, maximizando densidad informativa manteniendo accesibilidad.
 
 ### Recursos Externos
 
