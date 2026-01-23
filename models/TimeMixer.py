@@ -1,67 +1,81 @@
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from layers.Autoformer_EncDec import series_decomp
-from layers.Embed import DataEmbedding_wo_pos
-from layers.StandardNorm import Normalize
+"""
+TimeMixer - Modelo multi-escala con descomposición y mezcla.
+Idea: Procesar la serie a diferentes escalas temporales (downsampling) y mezclar
+los patrones estacionales (bottom-up) y de tendencia (top-down).
+Paper: Wang et al., 2024
+"""
+
+import torch  # Framework de deep learning
+import torch.nn as nn  # Módulo de redes neuronales
+import torch.nn.functional as F  # Funciones de activación
+from layers.Autoformer_EncDec import series_decomp  # Descomposición con moving average
+from layers.Embed import DataEmbedding_wo_pos  # Embedding sin posición
+from layers.StandardNorm import Normalize  # Normalización reversible (RevIN)
 
 
 class DFT_series_decomp(nn.Module):
     """
-    Series decomposition block
+    Descomposición de series usando Transformada de Fourier (DFT).
+    Alternativa a moving_avg: separa frecuencias altas (estacionalidad) de bajas (tendencia).
     """
 
     def __init__(self, top_k: int = 5):
+        """top_k: Número de frecuencias principales a mantener."""
         super(DFT_series_decomp, self).__init__()
         self.top_k = top_k
 
     def forward(self, x):
-        xf = torch.fft.rfft(x)
-        freq = abs(xf)
-        freq[0] = 0
-        top_k_freq, top_list = torch.topk(freq, k=self.top_k)
-        xf[freq <= top_k_freq.min()] = 0
-        x_season = torch.fft.irfft(xf)
-        x_trend = x - x_season
+        """Separa estacionalidad y tendencia usando FFT."""
+        xf = torch.fft.rfft(x)  # Transformada de Fourier
+        freq = abs(xf)  # Magnitud de frecuencias
+        freq[0] = 0  # Ignorar componente DC
+        top_k_freq, top_list = torch.topk(freq, k=self.top_k)  # Top K frecuencias
+        xf[freq <= top_k_freq.min()] = 0  # Filtrar frecuencias menores
+        x_season = torch.fft.irfft(xf)  # Estacionalidad = frecuencias altas
+        x_trend = x - x_season  # Tendencia = original - estacionalidad
         return x_season, x_trend
 
 
 class MultiScaleSeasonMixing(nn.Module):
     """
-    Bottom-up mixing season pattern
+    Mezcla bottom-up de patrones estacionales.
+    Propaga información de escala alta (detalle) a escala baja (global).
+    Idea: Los patrones estacionales finos informan a los patrones más gruesos.
     """
 
     def __init__(self, configs):
         super(MultiScaleSeasonMixing, self).__init__()
 
-        self.down_sampling_layers = torch.nn.ModuleList(
-            [
-                nn.Sequential(
-                    torch.nn.Linear(
-                        configs.seq_len // (configs.down_sampling_window ** i),
-                        configs.seq_len // (configs.down_sampling_window ** (i + 1)),
-                    ),
-                    nn.GELU(),
-                    torch.nn.Linear(
-                        configs.seq_len // (configs.down_sampling_window ** (i + 1)),
-                        configs.seq_len // (configs.down_sampling_window ** (i + 1)),
-                    ),
-
-                )
-                for i in range(configs.down_sampling_layers)
-            ]
-        )
+        # Capas de downsampling: reducen la resolución temporal
+        self.down_sampling_layers = torch.nn.ModuleList([
+            nn.Sequential(
+                # Reducir de escala i a escala i+1 (más gruesa)
+                torch.nn.Linear(
+                    configs.seq_len // (configs.down_sampling_window ** i),
+                    configs.seq_len // (configs.down_sampling_window ** (i + 1)),
+                ),
+                nn.GELU(),  # Activación
+                torch.nn.Linear(
+                    configs.seq_len // (configs.down_sampling_window ** (i + 1)),
+                    configs.seq_len // (configs.down_sampling_window ** (i + 1)),
+                ),
+            )
+            for i in range(configs.down_sampling_layers)
+        ])
 
     def forward(self, season_list):
-
-        # mixing high->low
-        out_high = season_list[0]
-        out_low = season_list[1]
+        """
+        Mezcla patrones estacionales de fino a grueso.
+        season_list: Lista de tensores [escala_0, escala_1, ...] (de fino a grueso)
+        """
+        out_high = season_list[0]  # Escala más fina
+        out_low = season_list[1]   # Siguiente escala
         out_season_list = [out_high.permute(0, 2, 1)]
 
+        # Propagar información hacia escalas más gruesas
         for i in range(len(season_list) - 1):
-            out_low_res = self.down_sampling_layers[i](out_high)
-            out_low = out_low + out_low_res
+            out_low_res = self.down_sampling_layers[i](out_high)  # Reducir resolución
+            out_low = out_low + out_low_res  # Sumar con escala actual
             out_high = out_low
             if i + 2 <= len(season_list) - 1:
                 out_low = season_list[i + 2]
@@ -72,67 +86,83 @@ class MultiScaleSeasonMixing(nn.Module):
 
 class MultiScaleTrendMixing(nn.Module):
     """
-    Top-down mixing trend pattern
+    Mezcla top-down de patrones de tendencia.
+    Propaga información de escala baja (global) a escala alta (detalle).
+    Idea: Las tendencias globales informan a los detalles locales.
     """
 
     def __init__(self, configs):
         super(MultiScaleTrendMixing, self).__init__()
 
-        self.up_sampling_layers = torch.nn.ModuleList(
-            [
-                nn.Sequential(
-                    torch.nn.Linear(
-                        configs.seq_len // (configs.down_sampling_window ** (i + 1)),
-                        configs.seq_len // (configs.down_sampling_window ** i),
-                    ),
-                    nn.GELU(),
-                    torch.nn.Linear(
-                        configs.seq_len // (configs.down_sampling_window ** i),
-                        configs.seq_len // (configs.down_sampling_window ** i),
-                    ),
-                )
-                for i in reversed(range(configs.down_sampling_layers))
-            ])
+        # Capas de upsampling: aumentan la resolución temporal
+        self.up_sampling_layers = torch.nn.ModuleList([
+            nn.Sequential(
+                # Aumentar de escala i+1 a escala i (más fina)
+                torch.nn.Linear(
+                    configs.seq_len // (configs.down_sampling_window ** (i + 1)),
+                    configs.seq_len // (configs.down_sampling_window ** i),
+                ),
+                nn.GELU(),  # Activación
+                torch.nn.Linear(
+                    configs.seq_len // (configs.down_sampling_window ** i),
+                    configs.seq_len // (configs.down_sampling_window ** i),
+                ),
+            )
+            for i in reversed(range(configs.down_sampling_layers))
+        ])
 
     def forward(self, trend_list):
-
-        # mixing low->high
+        """
+        Mezcla patrones de tendencia de grueso a fino.
+        trend_list: Lista de tensores [escala_0, escala_1, ...] (de fino a grueso)
+        """
+        # Invertir lista para procesar de grueso a fino
         trend_list_reverse = trend_list.copy()
         trend_list_reverse.reverse()
-        out_low = trend_list_reverse[0]
-        out_high = trend_list_reverse[1]
+        out_low = trend_list_reverse[0]   # Escala más gruesa
+        out_high = trend_list_reverse[1]  # Siguiente escala
         out_trend_list = [out_low.permute(0, 2, 1)]
 
+        # Propagar información hacia escalas más finas
         for i in range(len(trend_list_reverse) - 1):
-            out_high_res = self.up_sampling_layers[i](out_low)
-            out_high = out_high + out_high_res
+            out_high_res = self.up_sampling_layers[i](out_low)  # Aumentar resolución
+            out_high = out_high + out_high_res  # Sumar con escala actual
             out_low = out_high
             if i + 2 <= len(trend_list_reverse) - 1:
                 out_high = trend_list_reverse[i + 2]
             out_trend_list.append(out_low.permute(0, 2, 1))
 
-        out_trend_list.reverse()
+        out_trend_list.reverse()  # Volver al orden original
         return out_trend_list
 
 
 class PastDecomposableMixing(nn.Module):
+    """
+    Bloque PDM: Past Decomposable Mixing.
+    Combina descomposición (tendencia/estacionalidad) con mezcla multi-escala.
+    Es el componente principal del encoder de TimeMixer.
+    """
+
     def __init__(self, configs):
         super(PastDecomposableMixing, self).__init__()
+
+        # Configuración
         self.seq_len = configs.seq_len
         self.pred_len = configs.pred_len
         self.down_sampling_window = configs.down_sampling_window
-
         self.layer_norm = nn.LayerNorm(configs.d_model)
         self.dropout = nn.Dropout(configs.dropout)
         self.channel_independence = configs.channel_independence
 
+        # Elegir método de descomposición
         if configs.decomp_method == 'moving_avg':
-            self.decompsition = series_decomp(configs.moving_avg)
+            self.decompsition = series_decomp(configs.moving_avg)  # Media móvil
         elif configs.decomp_method == "dft_decomp":
-            self.decompsition = DFT_series_decomp(configs.top_k)
+            self.decompsition = DFT_series_decomp(configs.top_k)  # Fourier
         else:
             raise ValueError('decompsition is error')
 
+        # Capa de mezcla entre canales (si no son independientes)
         if not configs.channel_independence:
             self.cross_layer = nn.Sequential(
                 nn.Linear(in_features=configs.d_model, out_features=configs.d_ff),
@@ -140,12 +170,11 @@ class PastDecomposableMixing(nn.Module):
                 nn.Linear(in_features=configs.d_ff, out_features=configs.d_model),
             )
 
-        # Mixing season
-        self.mixing_multi_scale_season = MultiScaleSeasonMixing(configs)
+        # Módulos de mezcla multi-escala
+        self.mixing_multi_scale_season = MultiScaleSeasonMixing(configs)  # Bottom-up
+        self.mixing_multi_scale_trend = MultiScaleTrendMixing(configs)    # Top-down
 
-        # Mxing trend
-        self.mixing_multi_scale_trend = MultiScaleTrendMixing(configs)
-
+        # Capa de salida
         self.out_cross_layer = nn.Sequential(
             nn.Linear(in_features=configs.d_model, out_features=configs.d_ff),
             nn.GELU(),
@@ -153,41 +182,55 @@ class PastDecomposableMixing(nn.Module):
         )
 
     def forward(self, x_list):
+        """
+        Procesa lista de tensores a diferentes escalas.
+
+        x_list: Lista de tensores [escala_0, escala_1, ...] de fino a grueso
+        Salida: Lista procesada con mezcla de tendencia y estacionalidad
+        """
+        # Guardar longitudes originales
         length_list = []
         for x in x_list:
             _, T, _ = x.size()
             length_list.append(T)
 
-        # Decompose to obtain the season and trend
+        # PASO 1: Descomponer cada escala en estacionalidad y tendencia
         season_list = []
         trend_list = []
         for x in x_list:
             season, trend = self.decompsition(x)
             if not self.channel_independence:
-                season = self.cross_layer(season)
+                season = self.cross_layer(season)  # Mezclar canales
                 trend = self.cross_layer(trend)
             season_list.append(season.permute(0, 2, 1))
             trend_list.append(trend.permute(0, 2, 1))
 
-        # bottom-up season mixing
-        out_season_list = self.mixing_multi_scale_season(season_list)
-        # top-down trend mixing
-        out_trend_list = self.mixing_multi_scale_trend(trend_list)
+        # PASO 2: Mezcla multi-escala
+        out_season_list = self.mixing_multi_scale_season(season_list)  # Bottom-up para estacionalidad
+        out_trend_list = self.mixing_multi_scale_trend(trend_list)     # Top-down para tendencia
 
+        # PASO 3: Combinar y aplicar conexión residual
         out_list = []
-        for ori, out_season, out_trend, length in zip(x_list, out_season_list, out_trend_list,
-                                                      length_list):
-            out = out_season + out_trend
+        for ori, out_season, out_trend, length in zip(x_list, out_season_list, out_trend_list, length_list):
+            out = out_season + out_trend  # Sumar componentes
             if self.channel_independence:
-                out = ori + self.out_cross_layer(out)
-            out_list.append(out[:, :length, :])
+                out = ori + self.out_cross_layer(out)  # Conexión residual
+            out_list.append(out[:, :length, :])  # Recortar a longitud original
+
         return out_list
 
 
 class Model(nn.Module):
+    """
+    TimeMixer: Modelo multi-escala con descomposición y mezcla.
+    Procesa la serie a múltiples resoluciones temporales y mezcla información
+    entre escalas de forma diferente para tendencia (top-down) y estacionalidad (bottom-up).
+    """
 
     def __init__(self, configs):
         super(Model, self).__init__()
+
+        # Guardar configuración
         self.configs = configs
         self.task_name = configs.task_name
         self.seq_len = configs.seq_len
@@ -195,18 +238,23 @@ class Model(nn.Module):
         self.pred_len = configs.pred_len
         self.down_sampling_window = configs.down_sampling_window
         self.channel_independence = configs.channel_independence
-        self.pdm_blocks = nn.ModuleList([PastDecomposableMixing(configs)
-                                         for _ in range(configs.e_layers)])
 
+        # Bloques PDM apilados (encoder principal)
+        self.pdm_blocks = nn.ModuleList([
+            PastDecomposableMixing(configs) for _ in range(configs.e_layers)
+        ])
+
+        # Preprocesamiento: descomposición inicial
         self.preprocess = series_decomp(configs.moving_avg)
         self.enc_in = configs.enc_in
 
+        # Embedding de entrada
         if self.channel_independence:
-            self.enc_embedding = DataEmbedding_wo_pos(1, configs.d_model, configs.embed, configs.freq,
-                                                      configs.dropout)
+            # Cada canal se procesa por separado
+            self.enc_embedding = DataEmbedding_wo_pos(1, configs.d_model, configs.embed, configs.freq, configs.dropout)
         else:
-            self.enc_embedding = DataEmbedding_wo_pos(configs.enc_in, configs.d_model, configs.embed, configs.freq,
-                                                      configs.dropout)
+            # Todos los canales juntos
+            self.enc_embedding = DataEmbedding_wo_pos(configs.enc_in, configs.d_model, configs.embed, configs.freq, configs.dropout)
 
         self.layer = configs.e_layers
 
@@ -500,6 +548,22 @@ class Model(nn.Module):
         return dec_out
 
     def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask=None):
+        """
+        Punto de entrada principal de TimeMixer.
+
+        x_enc: Serie de entrada [batch, seq_len, channels]
+        x_mark_enc: Marcas temporales de entrada
+        x_dec, x_mark_dec: Entrada/marcas del decodificador
+        mask: Máscara para imputación
+
+        El flujo principal es:
+        1. Multi-scale downsampling de la entrada
+        2. Normalización por escala
+        3. Embedding
+        4. Bloques PDM (descomposición + mezcla multi-escala)
+        5. Future Multi-predictor Mixing (para forecast)
+        6. Desnormalización
+        """
         if self.task_name == 'long_term_forecast' or self.task_name == 'short_term_forecast':
             dec_out = self.forecast(x_enc, x_mark_enc, x_dec, x_mark_dec)
             return dec_out

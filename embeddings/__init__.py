@@ -1,11 +1,11 @@
 """
-Módulo de Embeddings Estructurados para RITMO.
-
-Transforma tokens discretos (estados HMM) en embeddings vectoriales
-e_k = [μ_k, σ_k, A[k,:]] que encapsulan información estadística y
-dinámica temporal.
+Módulo de Embeddings para RITMO.
+Convierte estados HMM (tokens discretos) en vectores numéricos (embeddings).
+Cada embedding contiene: media, desviación y probabilidades de transición del estado.
 """
 
+# Importa la clase principal que genera embeddings
 from .embedding_generator import EmbeddingGenerator
 
+# Lista de clases públicas del módulo
 __all__ = ['EmbeddingGenerator']

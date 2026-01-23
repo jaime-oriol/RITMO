@@ -1,15 +1,14 @@
 """
 Algoritmo Baum-Welch (EM) para entrenamiento de HMM.
-
-Implementa Expectation-Maximization para estimación de máxima verosimilitud
-de parámetros λ=(A,π,μ,σ) en Hidden Markov Models (Rabiner 1989).
+Aprende los parámetros óptimos del modelo a partir de los datos.
+EM = Expectation-Maximization: alterna entre estimar estados y actualizar parámetros.
 """
 
-import numpy as np
-from typing import Dict, Any
-from tqdm import tqdm
-from .forward_backward import forward_backward
-from .utils import initialize_kmeans, EPS
+import numpy as np  # Operaciones matemáticas con arrays
+from typing import Dict, Any  # Para indicar tipos de datos
+from tqdm import tqdm  # Barra de progreso visual
+from .forward_backward import forward_backward  # Paso E del algoritmo
+from .utils import initialize_kmeans, EPS  # Inicialización y constante de seguridad
 
 
 def baum_welch(observations: np.ndarray,
@@ -19,46 +18,32 @@ def baum_welch(observations: np.ndarray,
                random_state: int = 42,
                verbose: bool = True) -> Dict[str, Any]:
     """
-    Entrena HMM mediante algoritmo Baum-Welch (EM).
+    Entrena un HMM usando el algoritmo Baum-Welch.
+    Encuentra los mejores parámetros (A, pi, mu, sigma) para explicar los datos.
 
-    Implementa Expectation-Maximization para estimación de parámetros λ=(A,π,μ,σ).
-    Garantiza convergencia monótona de log-verosimilitud a máximo local
-    (Dempster et al. 1977).
+    El algoritmo alterna entre:
+    - Paso E: Estimar en qué estado estaba el sistema en cada momento
+    - Paso M: Actualizar parámetros basándose en esas estimaciones
 
-    Algoritmo:
-        1. Inicialización: k-means sobre observaciones (Rabiner 1989)
-        2. E-step: calcular γ_t(k) y ξ_t(k,l) usando Forward-Backward
-        3. M-step: re-estimar parámetros mediante ecuaciones de maximización
-        4. Repetir hasta convergencia: |log P(O|λ^n) - log P(O|λ^{n-1})| < ε
+    Entrada:
+        observations: Serie temporal (lista de valores numéricos)
+        K: Número de estados ocultos que queremos descubrir
+        max_iter: Máximo de vueltas del algoritmo (por si no converge)
+        epsilon: Cuándo parar (si mejora menos que esto, terminamos)
+        random_state: Semilla para resultados reproducibles
+        verbose: Si True, muestra barra de progreso
 
-    Args:
-        observations: Serie temporal normalizada [T]
-        K: Número de estados ocultos
-        max_iter: Iteraciones máximas EM
-        epsilon: Umbral convergencia en log-verosimilitud
-        random_state: Semilla para reproducibilidad
-        verbose: Mostrar progress bar
-
-    Returns:
-        Diccionario con claves:
-            'A': Matriz de transición [K, K]
-            'pi': Distribución inicial [K]
-            'mu': Medias gaussianas [K]
-            'sigma': Desviaciones estándar [K]
-            'log_likelihood': Log-verosimilitud final
-            'converged': True si convergió antes de max_iter
-            'n_iter': Número de iteraciones ejecutadas
-
-    Raises:
-        ValueError: Si K < 2, observations vacío, o parámetros inválidos
-
-    Ejemplo:
-        >>> obs = np.random.randn(1000)  # Serie sintética
-        >>> params = baum_welch(obs, K=3, max_iter=50)
-        >>> print(f"Convergió: {params['converged']}")
-        >>> print(f"Estados: {params['mu']}")
+    Salida: Diccionario con:
+        'A': Matriz de transición [K, K] - probabilidad de ir de estado i a j
+        'pi': Probabilidades iniciales [K] - prob de empezar en cada estado
+        'mu': Medias [K] - valor típico de cada estado
+        'sigma': Desviaciones [K] - dispersión de cada estado
+        'log_likelihood': Qué tan bien el modelo explica los datos
+        'converged': True si terminó porque ya no mejoraba
+        'n_iter': Cuántas iteraciones hizo
     """
-    # ========== 1. VALIDACIONES (Fail Fast) ==========
+    # ========== 1. VERIFICAR ENTRADAS ==========
+    # Comprobar que los parámetros tienen sentido
     if K < 2:
         raise ValueError(f"K debe ser >= 2, recibido: {K}")
     if len(observations) == 0:
@@ -70,63 +55,66 @@ def baum_welch(observations: np.ndarray,
     if epsilon <= 0:
         raise ValueError(f"epsilon debe ser > 0, recibido: {epsilon}")
 
-    T = len(observations)
+    T = len(observations)  # Longitud de la serie temporal
 
-    # ========== 2. INICIALIZACIÓN K-MEANS (Rabiner 1989) ==========
+    # ========== 2. INICIALIZACIÓN CON K-MEANS ==========
+    # Crear parámetros iniciales agrupando datos con k-means
     A, pi, mu, sigma = initialize_kmeans(observations, K, random_state)
 
-    # Log-verosimilitud inicial
-    log_likelihood_prev = -np.inf
-    log_likelihoods = []  # Historial de convergencia
-    converged = False
+    # Variables para seguimiento del entrenamiento
+    log_likelihood_prev = -np.inf  # Empezamos con "infinitamente malo"
+    log_likelihoods = []  # Guardamos historial para ver convergencia
+    converged = False  # Aún no ha convergido
 
-    # ========== 3. LOOP EM ==========
+    # ========== 3. BUCLE PRINCIPAL EM ==========
+    # Preparar iterador (con o sin barra de progreso)
     iterator = range(max_iter)
     if verbose:
         iterator = tqdm(iterator, desc="Baum-Welch EM")
 
     for iteration in iterator:
-        # ===== E-STEP: Calcular estadísticas suficientes =====
-        # γ_t(k) = P(q_t=k|O,λ): Probabilidad estado k en timestep t
-        # ξ_t(k,l) = P(q_t=k, q_{t+1}=l|O,λ): Probabilidad transición k→l
+        # ===== PASO E (Expectation): Estimar estados =====
+        # gamma[t,k] = probabilidad de estar en estado k en tiempo t
+        # xi[t,k,l] = probabilidad de transición k→l en tiempo t
         gamma, xi, log_likelihood = forward_backward(observations, A, pi, mu, sigma)
-        log_likelihoods.append(log_likelihood)
+        log_likelihoods.append(log_likelihood)  # Guardar para historial
 
-        # ===== M-STEP: Re-estimación de parámetros =====
+        # ===== PASO M (Maximization): Actualizar parámetros =====
 
-        # π_k = γ_1(k): Probabilidad estado inicial
+        # Actualizar pi: probabilidad inicial = prob del primer estado
         pi = gamma[0, :]
 
-        # A_kl = Σ_t ξ_t(k,l) / Σ_t γ_t(k): Transiciones esperadas
-        # Numerador: suma de ξ sobre todos los timesteps
-        # Denominador: suma de γ sobre timesteps t=0..T-2 (transiciones válidas)
-        numerator_A = np.sum(xi, axis=0)  # [K, K]
-        denominator_A = np.sum(gamma[:-1, :], axis=0)[:, np.newaxis]  # [K, 1]
-        A = numerator_A / (denominator_A + EPS)  # Evitar división por cero
+        # Actualizar A: matriz de transición
+        # = (veces esperadas de transición k→l) / (veces esperadas en estado k)
+        numerator_A = np.sum(xi, axis=0)  # Suma de transiciones k→l
+        denominator_A = np.sum(gamma[:-1, :], axis=0)[:, np.newaxis]  # Veces en k
+        A = numerator_A / (denominator_A + EPS)  # División segura
 
-        # μ_k = Σ_t γ_t(k)·o_t / Σ_t γ_t(k): Media ponderada por γ
-        numerator_mu = np.sum(gamma * observations[:, np.newaxis], axis=0)  # [K]
-        denominator_mu = np.sum(gamma, axis=0)  # [K]
+        # Actualizar mu: media de cada estado
+        # = promedio de observaciones ponderado por prob de estar en ese estado
+        numerator_mu = np.sum(gamma * observations[:, np.newaxis], axis=0)
+        denominator_mu = np.sum(gamma, axis=0)
         mu = numerator_mu / (denominator_mu + EPS)
 
-        # σ_k² = Σ_t γ_t(k)·(o_t - μ_k)² / Σ_t γ_t(k): Varianza ponderada
-        diff_squared = (observations[:, np.newaxis] - mu)**2  # [T, K]
-        numerator_sigma = np.sum(gamma * diff_squared, axis=0)  # [K]
+        # Actualizar sigma: desviación de cada estado
+        # = dispersión de observaciones ponderada por prob de estar en ese estado
+        diff_squared = (observations[:, np.newaxis] - mu)**2  # Distancia al cuadrado
+        numerator_sigma = np.sum(gamma * diff_squared, axis=0)
         sigma = np.sqrt(numerator_sigma / (denominator_mu + EPS))
+        sigma = np.maximum(sigma, EPS)  # Evitar sigma=0
 
-        # Evitar σ=0 que causa problemas numéricos
-        sigma = np.maximum(sigma, EPS)
-
-        # ===== CONVERGENCIA: |ΔLL| < ε =====
+        # ===== VERIFICAR CONVERGENCIA =====
+        # Si la mejora es menor que epsilon, terminamos
         delta_ll = abs(log_likelihood - log_likelihood_prev)
 
+        # Mostrar progreso cada 10 iteraciones
         if verbose and iteration % 10 == 0:
-            # Actualizar descripción de progress bar cada 10 iteraciones
             iterator.set_postfix({
                 'LL': f'{log_likelihood:.2f}',
                 'ΔLL': f'{delta_ll:.2e}'
             })
 
+        # Si ya no mejora significativamente, parar
         if delta_ll < epsilon:
             converged = True
             if verbose:
@@ -135,22 +123,24 @@ def baum_welch(observations: np.ndarray,
                 print(f"  Log-likelihood final: {log_likelihood:.4f}")
             break
 
+        # Guardar para comparar en siguiente iteración
         log_likelihood_prev = log_likelihood
 
-    # Si no convergió
+    # Mensaje si no convergió
     if not converged and verbose:
         print(f"\nNo convergió en {max_iter} iteraciones")
         print(f"  Log-likelihood final: {log_likelihood:.4f}")
         print(f"  ΔLL final: {delta_ll:.2e} (umbral: {epsilon:.2e})")
 
-    # ========== 4. RETORNAR PARÁMETROS ENTRENADOS ==========
+    # ========== 4. DEVOLVER RESULTADOS ==========
+    # Empaquetar todos los parámetros entrenados en un diccionario
     return {
-        'A': A,
-        'pi': pi,
-        'mu': mu,
-        'sigma': sigma,
-        'log_likelihood': log_likelihood,
-        'log_likelihoods': log_likelihoods,
-        'converged': converged,
-        'n_iter': iteration + 1
+        'A': A,                          # Matriz de transición aprendida
+        'pi': pi,                        # Probabilidades iniciales aprendidas
+        'mu': mu,                        # Medias de cada estado
+        'sigma': sigma,                  # Desviaciones de cada estado
+        'log_likelihood': log_likelihood,  # Calidad final del modelo
+        'log_likelihoods': log_likelihoods,  # Historial de mejora
+        'converged': converged,          # ¿Terminó por convergencia?
+        'n_iter': iteration + 1          # Número de iteraciones realizadas
     }
