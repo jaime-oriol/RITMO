@@ -1,13 +1,12 @@
 """
 Algoritmo de Viterbi para decodificación de HMM.
-
-Encuentra la secuencia de estados ocultos más probable Q* = argmax P(Q|O,λ)
-mediante programación dinámica (Rabiner 1989).
+Encuentra la secuencia de estados MÁS PROBABLE dada una serie de observaciones.
+Es como encontrar el mejor camino a través de los estados ocultos.
 """
 
-import numpy as np
-from typing import Tuple
-from .gaussian_emissions import log_gaussian_emission
+import numpy as np  # Operaciones matemáticas con arrays
+from typing import Tuple  # Para indicar tipos de retorno múltiples
+from .gaussian_emissions import log_gaussian_emission  # Probabilidades de emisión
 
 
 def viterbi_decode(observations: np.ndarray,
@@ -16,87 +15,67 @@ def viterbi_decode(observations: np.ndarray,
                    mu: np.ndarray,
                    sigma: np.ndarray) -> Tuple[np.ndarray, float]:
     """
-    Decodifica secuencia óptima de estados mediante algoritmo de Viterbi.
+    Encuentra la secuencia de estados más probable para las observaciones dadas.
+    Usa programación dinámica para evitar probar todas las combinaciones posibles.
 
-    Encuentra Q* = argmax_Q P(Q|O,λ) usando programación dinámica con
-    complejidad O(T×K²), evitando exploración exhaustiva O(K^T).
+    Idea: En cada momento, solo guardamos el mejor camino para llegar a cada estado.
+    Al final, reconstruimos el camino óptimo yendo hacia atrás.
 
-    Variables:
-        δ_t(k): Máxima log-probabilidad de camino hasta t terminando en k
-        ψ_t(k): Estado previo óptimo en timestep t-1 para backtracking
+    Entrada:
+        observations: Serie temporal [T valores]
+        A: Matriz de transición [K, K] (prob de ir de estado i a j)
+        pi: Probabilidades iniciales [K]
+        mu: Medias de cada estado [K]
+        sigma: Desviaciones de cada estado [K]
 
-    Recursión:
-        δ_1(k) = log π_k + log b_k(o_1)
-        δ_t(k) = max_j [δ_{t-1}(j) + log A_jk] + log b_k(o_t)
-        ψ_t(k) = argmax_j [δ_{t-1}(j) + log A_jk]
-
-    Args:
-        observations: Serie temporal [T]
-        A: Matriz de transición [K, K]
-        pi: Distribución inicial [K]
-        mu: Medias gaussianas [K]
-        sigma: Desviaciones estándar [K]
-
-    Returns:
-        Tupla (state_sequence, log_likelihood):
-            state_sequence: [T] array de índices de estados (0..K-1)
-            log_likelihood: log P(Q*, O|λ) del camino óptimo
-
-    Raises:
-        ValueError: Si dimensiones son inconsistentes
-
-    Ejemplo:
-        >>> obs = np.array([1.0, 5.2, 5.1, 1.1, 0.9])
-        >>> A = np.array([[0.7, 0.3], [0.4, 0.6]])
-        >>> pi = np.array([0.5, 0.5])
-        >>> mu = np.array([1.0, 5.0])
-        >>> sigma = np.array([0.5, 0.5])
-        >>> states, ll = viterbi_decode(obs, A, pi, mu, sigma)
-        >>> states  # [0, 1, 1, 0, 0] por ejemplo
+    Salida:
+        state_sequence: Lista de estados [0, 1, 2, ...] para cada tiempo
+        log_likelihood: Probabilidad del camino óptimo (qué tan bueno es)
     """
-    K = len(mu)
-    T = len(observations)
+    K = len(mu)  # Número de estados
+    T = len(observations)  # Longitud de la serie
 
-    # Validaciones
+    # Verificar dimensiones
     if A.shape != (K, K):
         raise ValueError(f"A debe ser [{K},{K}], recibido: {A.shape}")
     if pi.shape != (K,):
         raise ValueError(f"pi debe ser [{K}], recibido: {pi.shape}")
 
-    # 1. Calcular log-emisiones b_k(o_t)
+    # PASO 1: Calcular prob de emisión para cada estado y tiempo
     log_B = log_gaussian_emission(observations, mu, sigma)  # [T, K]
 
-    # 2. Convertir parámetros a log-space (evitar log(0))
-    log_A = np.log(A + 1e-10)
+    # PASO 2: Convertir a escala logarítmica
+    log_A = np.log(A + 1e-10)  # +1e-10 evita log(0)
     log_pi = np.log(pi + 1e-10)
 
-    # 3. Inicializar variables de programación dinámica
-    delta = np.zeros((T, K))     # δ_t(k): máxima log-prob hasta t
-    psi = np.zeros((T, K), dtype=int)  # ψ_t(k): estado previo óptimo
+    # PASO 3: Crear tablas para programación dinámica
+    delta = np.zeros((T, K))  # delta[t,k] = mejor prob de llegar a estado k en tiempo t
+    psi = np.zeros((T, K), dtype=int)  # psi[t,k] = desde qué estado llegamos a k
 
-    # 4. Inicialización: δ_1(k) = log π_k + log b_k(o_1)
+    # PASO 4: Inicialización (tiempo t=0)
+    # Prob = prob inicial × prob de emitir primera observación
     delta[0] = log_pi + log_B[0]
-    # psi[0] no se usa (no hay estado previo)
 
-    # 5. Recursión: δ_t(k) = max_j [δ_{t-1}(j) + log A_jk] + log b_k(o_t)
+    # PASO 5: Llenar la tabla hacia adelante (t=1 hasta T-1)
     for t in range(1, T):
         for k in range(K):
-            # Calcular δ_{t-1}(j) + log A_jk para todos los j
+            # Para cada estado k, buscar el mejor estado previo j
+            # scores[j] = prob de estar en j + prob de transición j→k
             scores = delta[t-1] + log_A[:, k]
 
-            # Maximización
-            psi[t, k] = np.argmax(scores)  # Estado previo óptimo
-            delta[t, k] = scores[psi[t, k]] + log_B[t, k]  # Máxima log-prob
+            # Guardar el mejor estado previo y su probabilidad
+            psi[t, k] = np.argmax(scores)  # ¿De dónde venimos?
+            delta[t, k] = scores[psi[t, k]] + log_B[t, k]  # Mejor prob + emisión
 
-    # 6. Terminación: encontrar estado final con máxima probabilidad
-    last_state = np.argmax(delta[-1])
-    log_likelihood = delta[-1, last_state]
+    # PASO 6: Encontrar el mejor estado final
+    last_state = np.argmax(delta[-1])  # Estado con mayor prob en tiempo final
+    log_likelihood = delta[-1, last_state]  # Prob del mejor camino
 
-    # 7. Backtracking: recuperar secuencia óptima
-    state_sequence = np.zeros(T, dtype=int)
-    state_sequence[-1] = last_state
+    # PASO 7: Reconstruir el camino óptimo (backtracking)
+    state_sequence = np.zeros(T, dtype=int)  # Array para guardar el camino
+    state_sequence[-1] = last_state  # Empezamos por el final
 
-    # Recorrer hacia atrás usando punteros ψ
+    # Ir hacia atrás siguiendo los punteros psi
     for t in range(T-2, -1, -1):
         state_sequence[t] = psi[t+1, state_sequence[t+1]]
 
@@ -109,46 +88,37 @@ def viterbi_batch(observations: np.ndarray,
                   mu: np.ndarray,
                   sigma: np.ndarray) -> np.ndarray:
     """
-    Decodifica batch de secuencias mediante algoritmo de Viterbi.
+    Procesa múltiples series temporales a la vez.
+    Aplica viterbi_decode a cada serie del batch de forma independiente.
 
-    Procesa múltiples series temporales en paralelo, aplicando viterbi_decode
-    a cada serie del batch de forma independiente.
-
-    Args:
-        observations: Batch de series temporales [B, T] o [B, T, 1]
+    Entrada:
+        observations: Batch de series [B, T] donde B=número de series, T=longitud
         A: Matriz de transición [K, K]
-        pi: Distribución inicial [K]
-        mu: Medias gaussianas [K]
-        sigma: Desviaciones estándar [K]
+        pi: Probabilidades iniciales [K]
+        mu: Medias de cada estado [K]
+        sigma: Desviaciones de cada estado [K]
 
-    Returns:
-        state_sequences: [B, T] array de secuencias de estados (0..K-1)
-
-    Raises:
-        ValueError: Si dimensiones son inconsistentes o batch vacío
-
-    Ejemplo:
-        >>> batch_obs = np.random.randn(8, 96)  # batch=8, seq_len=96
-        >>> A = np.array([[0.7, 0.3], [0.4, 0.6]])
-        >>> pi = np.array([0.5, 0.5])
-        >>> mu = np.array([1.0, 5.0])
-        >>> sigma = np.array([0.5, 0.5])
-        >>> states = viterbi_batch(batch_obs, A, pi, mu, sigma)
-        >>> states.shape  # (8, 96)
+    Salida:
+        state_sequences: Matriz [B, T] con la secuencia de estados de cada serie
     """
+    # Si tiene 3 dimensiones [B, T, 1], quitar la última
     if observations.ndim == 3:
         observations = observations.squeeze(-1)
 
+    # Verificar que sea 2D
     if observations.ndim != 2:
         raise ValueError(f"observations debe ser [B,T] o [B,T,1], recibido: {observations.shape}")
 
-    B, T = observations.shape
+    B, T = observations.shape  # B = batch size, T = longitud temporal
 
+    # Verificar que hay al menos una serie
     if B == 0:
         raise ValueError("Batch vacío")
 
+    # Crear matriz de resultados
     state_sequences = np.zeros((B, T), dtype=int)
 
+    # Procesar cada serie del batch
     for b in range(B):
         states, _ = viterbi_decode(observations[b], A, pi, mu, sigma)
         state_sequences[b] = states
