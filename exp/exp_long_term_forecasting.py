@@ -1,88 +1,118 @@
-from data_provider.data_factory import data_provider
-from exp.exp_basic import Exp_Basic
-from utils.tools import EarlyStopping, adjust_learning_rate, visual
-from utils.metrics import metric
-import torch
-import torch.nn as nn
-from torch import optim
-import os
-import time
-import warnings
-import numpy as np
-from utils.dtw_metric import dtw, accelerated_dtw
+"""
+Experimento de predicción a largo plazo (long-term forecasting).
+Implementa el loop completo: train, validation, test con early stopping.
+"""
+
+from data_provider.data_factory import data_provider  # Factory de datos
+from exp.exp_basic import Exp_Basic  # Clase base
+from utils.tools import EarlyStopping, adjust_learning_rate, visual  # Utilidades
+from utils.metrics import metric  # Métricas de evaluación
+import torch  # Framework deep learning
+import torch.nn as nn  # Módulo de redes neuronales
+from torch import optim  # Optimizadores
+import os  # Operaciones de sistema
+import time  # Medición de tiempo
+import warnings  # Gestión de warnings
+import numpy as np  # Operaciones numéricas
+from utils.dtw_metric import dtw, accelerated_dtw  # Dynamic Time Warping
 
 warnings.filterwarnings('ignore')
 
 
 class Exp_Long_Term_Forecast(Exp_Basic):
+    """
+    Clase para experimentos de predicción a largo plazo.
+    Hereda de Exp_Basic e implementa train/vali/test completos.
+    """
     def __init__(self, args):
+        """Inicializa heredando de Exp_Basic."""
         super(Exp_Long_Term_Forecast, self).__init__(args)
 
     def _build_model(self):
+        """
+        Construye el modelo según args.model.
+        Soporta DataParallel para múltiples GPUs.
+        """
         model = self.model_dict[self.args.model].Model(self.args).float()
 
+        # Multi-GPU si está habilitado
         if self.args.use_multi_gpu and self.args.use_gpu:
             model = nn.DataParallel(model, device_ids=self.args.device_ids)
         return model
 
     def _get_data(self, flag):
+        """Carga dataset y dataloader. flag: 'train', 'val', o 'test'"""
         data_set, data_loader = data_provider(self.args, flag)
         return data_set, data_loader
 
     def _select_optimizer(self):
+        """Crea optimizador Adam con learning rate de args."""
         model_optim = optim.Adam(self.model.parameters(), lr=self.args.learning_rate)
         return model_optim
 
     def _select_criterion(self):
+        """Función de pérdida: MSE (Mean Squared Error)."""
         criterion = nn.MSELoss()
         return criterion
- 
 
     def vali(self, vali_data, vali_loader, criterion):
+        """
+        Evalúa modelo en conjunto de validación.
+        Returns: pérdida promedio
+        """
         total_loss = []
-        self.model.eval()
-        with torch.no_grad():
+        self.model.eval()  # Modo evaluación
+        with torch.no_grad():  # Sin gradientes
             for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(vali_loader):
+                # Mover datos a dispositivo
                 batch_x = batch_x.float().to(self.device)
                 batch_y = batch_y.float()
-
                 batch_x_mark = batch_x_mark.float().to(self.device)
                 batch_y_mark = batch_y_mark.float().to(self.device)
 
-                # decoder input
+                # Preparar entrada del decoder
                 dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float()
                 dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
-                # encoder - decoder
+
+                # Forward pass
                 if self.args.use_amp:
                     with torch.cuda.amp.autocast():
                         outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
                 else:
                     outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+
+                # Extraer predicciones
                 f_dim = -1 if self.args.features == 'MS' else 0
                 outputs = outputs[:, -self.args.pred_len:, f_dim:]
                 batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
 
+                # Calcular pérdida
                 pred = outputs.detach()
                 true = batch_y.detach()
-
                 loss = criterion(pred, true)
-
                 total_loss.append(loss.item())
+
         total_loss = np.average(total_loss)
         self.model.train()
         return total_loss
 
     def train(self, setting):
+        """
+        Loop de entrenamiento con early stopping.
+        setting: String identificador del experimento
+        Returns: modelo entrenado
+        """
+        # Cargar datos
         train_data, train_loader = self._get_data(flag='train')
         vali_data, vali_loader = self._get_data(flag='val')
         test_data, test_loader = self._get_data(flag='test')
 
+        # Directorio de checkpoints
         path = os.path.join(self.args.checkpoints, setting)
         if not os.path.exists(path):
             os.makedirs(path)
 
         time_now = time.time()
-
         train_steps = len(train_loader)
         early_stopping = EarlyStopping(patience=self.args.patience, verbose=True)
 
@@ -92,29 +122,31 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         if self.args.use_amp:
             scaler = torch.cuda.amp.GradScaler()
 
+        # === LOOP DE EPOCHS ===
         for epoch in range(self.args.train_epochs):
             iter_count = 0
             train_loss = []
-
             self.model.train()
             epoch_time = time.time()
+
             for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(train_loader):
                 iter_count += 1
                 model_optim.zero_grad()
+
+                # Mover a dispositivo
                 batch_x = batch_x.float().to(self.device)
                 batch_y = batch_y.float().to(self.device)
                 batch_x_mark = batch_x_mark.float().to(self.device)
                 batch_y_mark = batch_y_mark.float().to(self.device)
 
-                # decoder input
+                # Preparar decoder input
                 dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float()
                 dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
 
-                # encoder - decoder
+                # Forward + loss
                 if self.args.use_amp:
                     with torch.cuda.amp.autocast():
                         outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
-
                         f_dim = -1 if self.args.features == 'MS' else 0
                         outputs = outputs[:, -self.args.pred_len:, f_dim:]
                         batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
@@ -122,13 +154,13 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                         train_loss.append(loss.item())
                 else:
                     outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
-
                     f_dim = -1 if self.args.features == 'MS' else 0
                     outputs = outputs[:, -self.args.pred_len:, f_dim:]
                     batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
                     loss = criterion(outputs, batch_y)
                     train_loss.append(loss.item())
 
+                # Logging
                 if (i + 1) % 100 == 0:
                     print("\titers: {0}, epoch: {1} | loss: {2:.7f}".format(i + 1, epoch + 1, loss.item()))
                     speed = (time.time() - time_now) / iter_count
@@ -137,6 +169,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     iter_count = 0
                     time_now = time.time()
 
+                # Backward
                 if self.args.use_amp:
                     scaler.scale(loss).backward()
                     scaler.step(model_optim)
@@ -145,6 +178,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     loss.backward()
                     model_optim.step()
 
+            # Fin de epoch
             print("Epoch: {} cost time: {}".format(epoch + 1, time.time() - epoch_time))
             train_loss = np.average(train_loss)
             vali_loss = self.vali(vali_data, vali_loader, criterion)
@@ -152,6 +186,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
             print("Epoch: {0}, Steps: {1} | Train Loss: {2:.7f} Vali Loss: {3:.7f} Test Loss: {4:.7f}".format(
                 epoch + 1, train_steps, train_loss, vali_loss, test_loss))
+
             early_stopping(vali_loss, self.model, path)
             if early_stopping.early_stop:
                 print("Early stopping")
@@ -159,12 +194,18 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
             adjust_learning_rate(model_optim, epoch + 1, self.args)
 
+        # Cargar mejor modelo
         best_model_path = path + '/' + 'checkpoint.pth'
         self.model.load_state_dict(torch.load(best_model_path))
 
         return self.model
 
     def test(self, setting, test=0):
+        """
+        Evalúa modelo en test y guarda métricas.
+        setting: identificador del experimento
+        test: si 1, carga modelo desde checkpoint
+        """
         test_data, test_loader = self._get_data(flag='test')
         if test:
             print('loading model')
@@ -181,14 +222,14 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(test_loader):
                 batch_x = batch_x.float().to(self.device)
                 batch_y = batch_y.float().to(self.device)
-
                 batch_x_mark = batch_x_mark.float().to(self.device)
                 batch_y_mark = batch_y_mark.float().to(self.device)
 
-                # decoder input
+                # Decoder input
                 dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float()
                 dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
-                # encoder - decoder
+
+                # Forward
                 if self.args.use_amp:
                     with torch.cuda.amp.autocast():
                         outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
@@ -200,6 +241,8 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 batch_y = batch_y[:, -self.args.pred_len:, :].to(self.device)
                 outputs = outputs.detach().cpu().numpy()
                 batch_y = batch_y.detach().cpu().numpy()
+
+                # Transformación inversa si hay escalado
                 if test_data.scale and self.args.inverse:
                     shape = batch_y.shape
                     if outputs.shape[-1] != batch_y.shape[-1]:
@@ -215,6 +258,8 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
                 preds.append(pred)
                 trues.append(true)
+
+                # Visualizar cada 20 muestras
                 if i % 20 == 0:
                     input = batch_x.detach().cpu().numpy()
                     if test_data.scale and self.args.inverse:
@@ -224,6 +269,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     pd = np.concatenate((input[0, :, -1], pred[0, :, -1]), axis=0)
                     visual(gt, pd, os.path.join(folder_path, str(i) + '.pdf'))
 
+        # Concatenar predicciones
         preds = np.concatenate(preds, axis=0)
         trues = np.concatenate(trues, axis=0)
         print('test shape:', preds.shape, trues.shape)
@@ -231,12 +277,12 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         trues = trues.reshape(-1, trues.shape[-2], trues.shape[-1])
         print('test shape:', preds.shape, trues.shape)
 
-        # result save
+        # Guardar resultados
         folder_path = './results/' + setting + '/'
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
 
-        # dtw calculation
+        # DTW si habilitado
         if self.args.use_dtw:
             dtw_list = []
             manhattan_distance = lambda x, y: np.abs(x - y)
@@ -251,6 +297,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         else:
             dtw = 'Not calculated'
 
+        # Métricas
         mae, mse, rmse, mape, mspe = metric(preds, trues)
         print('mse:{}, mae:{}, dtw:{}'.format(mse, mae, dtw))
         f = open("result_long_term_forecast.txt", 'a')
