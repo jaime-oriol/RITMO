@@ -84,12 +84,12 @@ RITMO/
 │   ├── __init__.py         # Exporta EmbeddingGenerator
 │   └── embedding_generator.py # e_k = [μ_k, σ_k, A[k,:]]
 │
-├── tecnicas/                # Implementaciones de 6 técnicas de tokenización
-│   ├── foundation.py       # MOMENT (masked patches)
-│   ├── sax.py              # SAX (symbolic discretization)
-│   ├── llmtime.py          # LLMTime (text-based)
-│   ├── patch.py            # PatchTST (non-overlapping patches)
-│   ├── autoformer.py       # Autoformer (trend-seasonal decomposition)
+├── tecnicas/                # Implementaciones de 5 técnicas de tokenización
+│   ├── discretization.py   # Técnica: Discretización (ej: SAX)
+│   ├── text_based.py       # Técnica: Text-based (ej: LLMTime)
+│   ├── patching.py         # Técnica: Patching (ej: PatchTST)
+│   ├── decomposition.py    # Técnica: Descomposición (ej: DLinear)
+│   ├── foundation.py       # Técnica: Foundation models (ej: MOMENT)
 │   ├── Electricity_tokenization.ipynb # Comparación en Electricity
 │   ├── ETTh2_tokenization.ipynb       # Comparación en ETTh2
 │   └── figures/            # Exportación automática de visualizaciones
@@ -316,12 +316,12 @@ Notebook de validación exhaustiva del pipeline RITMO en 4 fases:
 
 Notebooks comparativos de 6 técnicas de tokenización:
 
-1. **HMM (RITMO)** - Estados ocultos con Viterbi
-2. **SAX** - Discretización simbólica gaussiana
-3. **LLMTime** - Serialización text-based
-4. **PatchTST** - Patches non-overlapping
-5. **Autoformer** - Descomposición trend-seasonal
-6. **MOMENT** - Masked patches foundation model
+1. **HMM (RITMO)** - Propuesta del TFG: estados ocultos con Viterbi
+2. **Discretización** - Símbolos discretos (ej: SAX, VQ-VAE)
+3. **Text-based** - Serialización a texto (ej: LLMTime)
+4. **Patching** - Segmentación en patches (ej: PatchTST)
+5. **Descomposición** - Trend + seasonal (ej: DLinear, Autoformer)
+6. **Foundation** - Pre-entrenamiento masivo (ej: MOMENT)
 
 **Convenciones:**
 - Auto-save PNG en cada celda de visualización
@@ -337,40 +337,45 @@ Notebooks comparativos de 6 técnicas de tokenización:
 - Compresión: 27x vía run-length encoding
 - Embeddings: [μ_k, σ_k, A[k,:]] interpretables
 
-### 2. SAX - Symbolic Aggregate approXimation
-**Archivo:** `tecnicas/sax.py`
+### 2. Discretización
+**Archivo:** `tecnicas/discretization.py`
 
-- Vocabulario: 8 símbolos alfabéticos
+- Ejemplo: SAX (Lin et al., 2007)
+- Vocabulario: Finito (ej: 8 símbolos)
 - Compresión: 1x (sin compresión)
-- Embeddings: One-hot o learnables
+- Embeddings: Lookup table aprendible
 
-### 3. LLMTime - Text-based
-**Archivo:** `tecnicas/llmtime.py`
+### 3. Text-based
+**Archivo:** `tecnicas/text_based.py`
 
-- Vocabulario: 13 caracteres (0-9, signo, punto, espacio)
+- Ejemplo: LLMTime (Gruver et al., 2023)
+- Vocabulario: Caracteres (0-9, signo, punto, espacio)
 - Compresión: 0.1x (expansión 10x)
-- Embeddings: Tokenizer pre-entrenado (GPT)
+- Embeddings: Character embeddings
 
-### 4. PatchTST - Patches
-**Archivo:** `tecnicas/patch.py`
+### 4. Patching
+**Archivo:** `tecnicas/patching.py`
 
+- Ejemplo: PatchTST (Nie et al., 2023)
 - Vocabulario: Continuo (patches R^16)
 - Compresión: 16x (patches no solapados)
 - Embeddings: Proyección lineal
 
-### 5. Autoformer - Decomposition
-**Archivo:** `tecnicas/autoformer.py`
+### 5. Descomposición
+**Archivo:** `tecnicas/decomposition.py`
 
+- Ejemplo: DLinear (Zeng et al., 2023)
 - Vocabulario: 2 componentes (trend + seasonal)
-- Compresión: 750x (compresión extrema)
-- Embeddings: Componentes separados
+- Compresión: Variable
+- Embeddings: Proyección por componente
 
-### 6. MOMENT - Foundation Model
+### 6. Foundation Models
 **Archivo:** `tecnicas/foundation.py`
 
+- Ejemplo: MOMENT (Goswami et al., 2024)
 - Vocabulario: Patches con masking 30%
-- Compresión: 16x (idéntico a PatchTST)
-- Embeddings: Learnables pre-entrenados
+- Compresión: 16x
+- Embeddings: Patch + position + mask token
 
 ## Convenciones de Visualización
 
