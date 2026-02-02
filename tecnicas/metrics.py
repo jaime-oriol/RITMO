@@ -166,33 +166,134 @@ def vocabulary_entropy(tokens: np.ndarray) -> float:
     return float(entropy / max_entropy) if max_entropy > 0 else 0.0
 
 
-def fertility(T_original: int, num_tokens: int) -> float:
+def bigram_entropy(tokens: np.ndarray) -> float:
     """
-    Fertilidad: tokens por timestep.
-    Métrica de NLP adaptada a series temporales.
+    Entropía de bigramas: distribución de transiciones entre tokens consecutivos.
+    Mide estructura secuencial y predictibilidad de transiciones.
+
+    Idea: Si token_t predice perfectamente token_{t+1}, entropía baja.
+    Si transiciones son uniformes, entropía alta.
 
     Entrada:
-        T_original: Longitud de la serie original
-        num_tokens: Número de tokens generados
+        tokens: Secuencia de tokens discretos [T]
 
     Salida:
-        Tokens por timestep:
-        - <1 = compresión (menos tokens que timesteps)
-        - =1 = un token por timestep
-        - >1 = expansión (más tokens que timesteps)
-
-    Nota: Es el inverso de compression_ratio.
+        Entropía normalizada de bigramas en [0, 1]:
+        - 1.0 = transiciones completamente uniformes
+        - 0.0 = transiciones determinísticas
 
     Ejemplo:
-        PatchTST: 62 tokens / 1000 timesteps = 0.062 (comprime)
-        LLMTime: 10496 chars / 1000 timesteps = 10.5 (expande)
+        HMM con matriz A suave: ~0.85
+        SAX con alta variabilidad: ~0.95
 
-    Ref: Rust et al. 2021 (NLP)
+    Ref: Uzan et al. 2024 "Greed is All You Need"
     """
-    if T_original == 0:
+    if len(tokens) < 2:
         return 0.0
 
-    return num_tokens / T_original
+    # Crear bigramas (token_t, token_{t+1})
+    bigrams = list(zip(tokens[:-1], tokens[1:]))
+
+    # Contar ocurrencias de cada bigrama
+    from collections import Counter
+    bigram_counts = Counter(bigrams)
+
+    # Convertir a probabilidades
+    total = len(bigrams)
+    probs = np.array([count / total for count in bigram_counts.values()])
+
+    # Entropía de Shannon
+    entropy = stats.entropy(probs, base=2)
+
+    # Entropía máxima = log2(número de bigramas únicos observados)
+    max_entropy = np.log2(len(bigram_counts)) if len(bigram_counts) > 1 else 1
+
+    # Normalizar
+    return float(entropy / max_entropy) if max_entropy > 0 else 0.0
+
+
+def token_persistence(tokens: np.ndarray) -> float:
+    """
+    Persistencia de tokens: longitud media de runs consecutivos.
+    Mide cuánto tiempo permanece en el mismo token/estado.
+
+    Idea: HMM con regímenes persistentes tendrá runs largos.
+    SAX con alta variabilidad tendrá runs cortos.
+
+    Entrada:
+        tokens: Secuencia de tokens discretos [T]
+
+    Salida:
+        Longitud media de runs (≥1):
+        - 1.0 = cada token es diferente del anterior
+        - >1 = tokens consecutivos iguales (persistencia)
+
+    Ejemplo:
+        HMM: [0,0,0,1,1,2,2,2,2] → runs [3,2,4] → mean=3.0
+        SAX: [0,1,2,3,4,5,6,7] → runs [1,1,...] → mean=1.0
+
+    Ref: Run-length encoding (lossless compression)
+    """
+    if len(tokens) == 0:
+        return 0.0
+
+    if len(tokens) == 1:
+        return 1.0
+
+    # Detectar cambios de token
+    changes = np.diff(tokens) != 0
+    change_indices = np.where(changes)[0] + 1
+
+    # Añadir inicio y fin para delimitar runs
+    run_boundaries = np.concatenate([[0], change_indices, [len(tokens)]])
+
+    # Calcular longitud de cada run
+    run_lengths = np.diff(run_boundaries)
+
+    # Longitud media
+    return float(np.mean(run_lengths))
+
+
+def top_k_coverage(tokens: np.ndarray, k: int = 5) -> float:
+    """
+    Cobertura top-K: fracción de uso cubierta por los K tokens más frecuentes.
+    Mide concentración de la distribución de tokens.
+
+    Idea: Si vocabulario está balanceado, top-K coverage es bajo.
+    Si pocos tokens dominan, top-K coverage es alto.
+
+    Entrada:
+        tokens: Secuencia de tokens discretos [T]
+        k: Número de tokens más frecuentes a considerar (default: 5)
+
+    Salida:
+        Fracción [0, 1] del uso total cubierto por top-K:
+        - 1.0 = los top-K cubren todo el uso (vocabulario concentrado)
+        - ~0.X = distribución más balanceada
+
+    Ejemplo:
+        HMM con 1 estado dominante: top-1 coverage ~0.70
+        SAX balanceado: top-5 coverage ~0.62
+
+    Ref: Zipf's law, Power laws in NLP
+    """
+    if len(tokens) == 0:
+        return 0.0
+
+    # Contar frecuencias
+    unique, counts = np.unique(tokens, return_counts=True)
+
+    # Ordenar por frecuencia descendente
+    sorted_counts = np.sort(counts)[::-1]
+
+    # Tomar top-K (o menos si vocab_size < k)
+    k_actual = min(k, len(sorted_counts))
+    top_k_counts = sorted_counts[:k_actual]
+
+    # Fracción cubierta
+    coverage = top_k_counts.sum() / counts.sum()
+
+    return float(coverage)
 
 
 def evaluate_tokenization(original: np.ndarray,
@@ -200,22 +301,24 @@ def evaluate_tokenization(original: np.ndarray,
                           num_tokens: int,
                           tokens: np.ndarray = None) -> Dict[str, float]:
     """
-    Evalúa tokenización con todas las métricas universales.
+    Evalúa tokenización con todas las métricas intrínsecas.
     Función de conveniencia que calcula todas las métricas a la vez.
 
     Entrada:
         original: Serie temporal original [T]
         reconstructed: Serie reconstruida desde tokens [T]
         num_tokens: Número de tokens generados
-        tokens: Secuencia de tokens discretos (opcional, para entropy)
+        tokens: Secuencia de tokens discretos (opcional, para métricas discretas)
 
     Salida:
         Diccionario con todas las métricas:
         - compression_ratio: Eficiencia de compresión
         - mse_reconstruction: Pérdida de información
-        - acf_retention: Preservación de dependencias
-        - fertility: Tokens por timestep
-        - vocabulary_entropy: Distribución de tokens (solo si tokens != None)
+        - acf_retention: Preservación de dependencias temporales
+        - vocabulary_entropy: Distribución de tokens (solo discretos)
+        - bigram_entropy: Entropía de transiciones (solo discretos)
+        - token_persistence: Longitud media de runs (solo discretos)
+        - top_k_coverage: Concentración top-5 tokens (solo discretos)
 
     Ejemplo:
         >>> metrics = evaluate_tokenization(serie, recon, 62, states)
@@ -224,16 +327,18 @@ def evaluate_tokenization(original: np.ndarray,
     """
     T = len(original)
 
-    # Calcular métricas universales (aplican a todas las técnicas)
+    # Métricas universales (aplican a todas las técnicas)
     metrics = {
         'compression_ratio': compression_ratio(T, num_tokens),
         'mse_reconstruction': mse_reconstruction(original, reconstructed),
         'acf_retention': acf_retention(original, reconstructed),
-        'fertility': fertility(T, num_tokens),
     }
 
-    # Entropía solo para técnicas con tokens discretos (SAX, HMM)
+    # Métricas para tokens discretos (SAX, HMM, etc.)
     if tokens is not None:
         metrics['vocabulary_entropy'] = vocabulary_entropy(tokens)
+        metrics['bigram_entropy'] = bigram_entropy(tokens)
+        metrics['token_persistence'] = token_persistence(tokens)
+        metrics['top_k_coverage'] = top_k_coverage(tokens, k=5)
 
     return metrics
