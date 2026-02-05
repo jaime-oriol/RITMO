@@ -5,7 +5,7 @@ Define interfaz común para todos los experimentos y gestiona el dispositivo (CP
 
 import os  # Operaciones del sistema
 import torch  # Framework de deep learning
-from models import DLinear, PatchTST, TimeMixer, TimeXer  # Modelos disponibles
+from models import DLinear, PatchTST, TimeMixer, TimeXer, TransformerCommon  # Modelos disponibles
 
 
 class Exp_Basic(object):
@@ -27,6 +27,7 @@ class Exp_Basic(object):
             'PatchTST': PatchTST,  # Transformer con patches
             'TimeMixer': TimeMixer,  # Multi-scale mixing
             'TimeXer': TimeXer,    # Variables exógenas
+            'TransformerCommon': TransformerCommon,  # Transformer común Plan A
         }
 
         # Configurar dispositivo y construir modelo
