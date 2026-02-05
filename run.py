@@ -3,10 +3,10 @@ import os
 import torch
 import torch.backends
 from exp.exp_long_term_forecasting import Exp_Long_Term_Forecast
-from exp.exp_imputation import Exp_Imputation
-from exp.exp_short_term_forecasting import Exp_Short_Term_Forecast
-from exp.exp_anomaly_detection import Exp_Anomaly_Detection
-from exp.exp_classification import Exp_Classification
+# from exp.exp_imputation import Exp_Imputation  # No disponible
+# from exp.exp_short_term_forecasting import Exp_Short_Term_Forecast  # No disponible
+# from exp.exp_anomaly_detection import Exp_Anomaly_Detection  # No disponible
+# from exp.exp_classification import Exp_Classification  # No disponible
 from exp.exp_plan_a import Exp_Plan_A
 from utils.print_args import print_args
 import random
@@ -99,7 +99,7 @@ if __name__ == '__main__':
     parser.add_argument('--use_amp', action='store_true', help='use automatic mixed precision training', default=False)
 
     # GPU
-    parser.add_argument('--use_gpu', type=bool, default=True, help='use gpu')
+    parser.add_argument('--use_gpu', type=int, default=1, help='use gpu (1=yes, 0=no)')
     parser.add_argument('--gpu', type=int, default=0, help='gpu')
     parser.add_argument('--gpu_type', type=str, default='cuda', help='gpu type')  # cuda or mps
     parser.add_argument('--use_multi_gpu', action='store_true', help='use multiple gpus', default=False)
@@ -183,14 +183,14 @@ if __name__ == '__main__':
 
     if args.task_name == 'long_term_forecast':
         Exp = Exp_Long_Term_Forecast
-    elif args.task_name == 'short_term_forecast':
-        Exp = Exp_Short_Term_Forecast
-    elif args.task_name == 'imputation':
-        Exp = Exp_Imputation
-    elif args.task_name == 'anomaly_detection':
-        Exp = Exp_Anomaly_Detection
-    elif args.task_name == 'classification':
-        Exp = Exp_Classification
+    # elif args.task_name == 'short_term_forecast':
+    #     Exp = Exp_Short_Term_Forecast  # No disponible
+    # elif args.task_name == 'imputation':
+    #     Exp = Exp_Imputation  # No disponible
+    # elif args.task_name == 'anomaly_detection':
+    #     Exp = Exp_Anomaly_Detection  # No disponible
+    # elif args.task_name == 'classification':
+    #     Exp = Exp_Classification  # No disponible
     elif args.task_name == 'plan_a':
         Exp = Exp_Plan_A
     else:
