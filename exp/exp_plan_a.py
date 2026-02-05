@@ -1,77 +1,58 @@
 """
-Experimentos Plan A: Comparación Controlada de Técnicas de Tokenización.
+Experimento Plan A: Comparación controlada de 6 técnicas de tokenización.
 
-Compara 6 técnicas de tokenización (Discretización, Text-based, Patching,
-Descomposición, Foundation, HMM) usando el MISMO Transformer para todas.
+Implementa pipeline completo:
+    1. RevIN normalización (externa, compartida)
+    2. Tokenización (variable según técnica)
+    3. Embeddings naturales (específicos por técnica)
+    4. TransformerCommon (arquitectura FIJA)
+    5. RevIN desnormalización
 
-Objetivo: Aislar el efecto de la técnica de tokenización manteniendo todo
-lo demás constante (RevIN, Transformer, protocolo de entrenamiento).
-
-Pipeline por técnica:
-    Data cruda → RevIN normalize → Tokenize → Embed → TransformerCommon
-              → Predicción norm → RevIN denormalize → Predicción final
-
-Referencias:
-    - Kim et al. 2022 (RevIN normalization)
-    - Anteproyecto RITMO (metodología Plan A)
+Técnicas soportadas:
+    - discretization: SAX, VQ-VAE (símbolos discretos)
+    - text_based: LLMTime (serialización a caracteres)
+    - patching: PatchTST (segmentación en patches)
+    - decomposition: DLinear/Autoformer (trend + seasonal)
+    - foundation: MOMENT (masked patches)
+    - hmm: RITMO (estados ocultos con embeddings estructurados)
 """
 
+from data_provider.data_factory import data_provider
+from exp.exp_basic import Exp_Basic
+from utils.tools import EarlyStopping, adjust_learning_rate, visual
+from utils.metrics import metric
+from layers.StandardNorm import Normalize  # RevIN oficial
+import torch
+import torch.nn as nn
+from torch import optim
 import os
 import time
 import warnings
 import numpy as np
-import torch
-import torch.nn as nn
-from torch import optim
-
-from data_provider.data_factory import data_provider  # Factory para datasets
-from exp.exp_basic import Exp_Basic  # Clase base de experimentos
-from models.TransformerCommon import Model as TransformerCommon  # Transformer único
-from layers.StandardNorm import Normalize  # RevIN oficial
-from utils.tools import EarlyStopping, adjust_learning_rate, visual  # Utilidades
-from utils.metrics import metric  # MSE, MAE
 
 # Importar técnicas de tokenización
-from tecnicas.discretization import sax_discretize, decode_sax
-from tecnicas.text_based import text_based_tokenize, decode_text_based
-from tecnicas.patching import patching_tokenize
-from tecnicas.decomposition import decomposition_tokenize
+from tecnicas.discretization import discretize_sax
+from tecnicas.text_based import series_to_text
+from tecnicas.patching import patchify
+from tecnicas.decomposition import decompose_series
 from tecnicas.foundation import foundation_tokenize
 
-# Importar embeddings naturales por técnica
-from embeddings.embedding_generator import EmbeddingGenerator  # HMM
-from embeddings.technique_embeddings import (
-    DiscretizationEmbedding,  # SAX
-    TextBasedEmbedding,       # LLMTime
-    PatchingEmbedding,        # PatchTST
-    DecompositionEmbedding,   # DLinear/Autoformer
-    FoundationEmbedding       # MOMENT
-)
-
-# Importar HMM para tokenización probabilística
-from hmm import baum_welch, viterbi_decode, load_hmm_params
+# Importar HMM para técnica RITMO
+from hmm import viterbi_decode
+from embeddings import EmbeddingGenerator
 
 warnings.filterwarnings('ignore')
 
 
 class Exp_Plan_A(Exp_Basic):
     """
-    Experimento Plan A: Comparación controlada de 6 técnicas de tokenización.
+    Experimento Plan A: Comparación justa de técnicas de tokenización.
 
-    Hereda de Exp_Basic para reutilizar infraestructura común pero implementa
-    pipeline específico con:
-    - RevIN externo (no en el modelo)
-    - Tokenización por técnica
-    - Embeddings naturales por técnica
-    - Transformer único para todas
-
-    Técnicas soportadas:
-        1. 'discretization' - SAX (Lin et al. 2007)
-        2. 'text_based' - LLMTime (Gruver et al. 2023)
-        3. 'patching' - PatchTST (Nie et al. 2023)
-        4. 'decomposition' - DLinear/Autoformer (Zeng et al. 2023, Wu et al. 2021)
-        5. 'foundation' - MOMENT (Goswami et al. 2024)
-        6. 'hmm' - RITMO (propuesta TFG)
+    Garantiza comparación controlada manteniendo TODO fijo excepto tokenización:
+        - RevIN: Externo, idéntico para todas las técnicas
+        - Transformer: Arquitectura fija (TransformerCommon)
+        - Hiperparámetros: d_model=128, n_heads=4, e_layers=2, d_ff=256
+        - Train/val/test: Mismos splits para todas las técnicas
     """
 
     def __init__(self, args):
@@ -79,411 +60,277 @@ class Exp_Plan_A(Exp_Basic):
         Inicializa experimento Plan A.
 
         Args:
-            args: Configuración con atributos:
-                - technique: Técnica de tokenización a usar
-                - model: Debe ser 'TransformerCommon'
-                - data: Dataset (ETTh1, ETTh2, Weather, Electricity, Traffic, Exchange)
-                - seq_len: Longitud de entrada (default: 96)
-                - pred_len: Horizonte de predicción (96, 192, 336, 720)
-                - d_model: Dimensión embeddings (default: 128)
-                - n_heads: Attention heads (default: 4)
-                - e_layers: Capas encoder (default: 2)
-                - otros parámetros de entrenamiento
+            args: Argumentos con técnica de tokenización en args.technique
         """
         super(Exp_Plan_A, self).__init__(args)
 
-        # Validar técnica especificada
-        valid_techniques = ['discretization', 'text_based', 'patching',
-                           'decomposition', 'foundation', 'hmm']
-        if args.technique not in valid_techniques:
-            raise ValueError(f"Técnica '{args.technique}' no válida. "
-                           f"Opciones: {valid_techniques}")
+        # Verificar técnica válida
+        valid_techniques = ['discretization', 'text_based', 'patching', 'decomposition', 'foundation', 'hmm']
+        if not hasattr(args, 'technique') or args.technique not in valid_techniques:
+            raise ValueError(f"args.technique debe ser una de: {valid_techniques}")
 
-        # Guardar técnica seleccionada
         self.technique = args.technique
 
         # Inicializar RevIN (Normalize de layers/StandardNorm.py)
-        # num_features=1 para forecasting univariado
-        # Se usa para normalizar ANTES de tokenizar
+        # CRÍTICO: Externa, compartida por todas las técnicas para comparación justa
         self.revin = Normalize(
-            num_features=1,  # Univariado (args.enc_in debería ser 1)
+            num_features=args.enc_in,  # Número de features (1 para univariado)
             eps=1e-5,
-            affine=False,  # Sin parámetros aprendibles (normalización simple)
+            affine=False,  # Sin parámetros aprendibles (no queremos que aprenda escala)
             subtract_last=False,  # Usar media, no último valor
-            non_norm=False  # Sí normalizar (no bypass)
+            non_norm=False  # Sí normalizar
         )
 
         # Inicializar embedder según técnica
-        # Cada técnica tiene su embedding natural
         self._init_embedder()
-
-        # Cargar parámetros HMM si la técnica es 'hmm'
-        if self.technique == 'hmm':
-            self._load_hmm_params()
 
     def _init_embedder(self):
         """
-        Inicializa el embedder según la técnica seleccionada.
+        Inicializa embedder natural según técnica de tokenización.
 
-        Cada técnica tiene su embedding natural:
-        - Discretización: Lookup table aprendible
-        - Text-based: Character embeddings
-        - Patching: Proyección lineal + positional
-        - Descomposición: Proyección por componente
-        - Foundation: Patch + mask token
-        - HMM: Embeddings estructurados [μ, σ, A]
+        Cada técnica tiene su propia forma natural de generar embeddings:
+            - discretization: Lookup table para símbolos discretos
+            - text_based: Character embeddings
+            - patching: Proyección lineal de patches
+            - decomposition: Proyección por componente
+            - foundation: Patch + position + mask embeddings
+            - hmm: Embeddings estructurados [μ_k, σ_k, A[k,:]]
         """
         d_model = self.args.d_model
 
         if self.technique == 'discretization':
-            # SAX: 8 símbolos → embedding table [8, d_model]
-            self.embedder = DiscretizationEmbedding(
-                vocab_size=8,  # Alfabeto SAX estándar
-                d_model=d_model
-            )
+            # Lookup table para 8 símbolos SAX
+            vocab_size = getattr(self.args, 'sax_vocab_size', 8)
+            self.embedder = nn.Embedding(vocab_size, d_model)
 
         elif self.technique == 'text_based':
-            # LLMTime: caracteres → embeddings [14, d_model]
-            self.embedder = TextBasedEmbedding(d_model=d_model)
+            # Character embeddings (0-9, signo, punto, espacio)
+            vocab_size = getattr(self.args, 'char_vocab_size', 13)
+            self.embedder = nn.Embedding(vocab_size, d_model)
 
         elif self.technique == 'patching':
-            # PatchTST: patches [P=16] → embeddings [d_model]
-            self.embedder = PatchingEmbedding(
-                patch_len=16,  # Longitud de patch estándar
-                d_model=d_model
-            )
+            # Proyección lineal desde patches
+            patch_len = getattr(self.args, 'patch_len', 16)
+            self.embedder = nn.Linear(patch_len, d_model)
 
         elif self.technique == 'decomposition':
-            # DLinear/Autoformer: trend + seasonal → embeddings
-            self.embedder = DecompositionEmbedding(d_model=d_model)
+            # Dos proyecciones: una para trend, otra para seasonal
+            self.embedder_trend = nn.Linear(1, d_model // 2)
+            self.embedder_seasonal = nn.Linear(1, d_model // 2)
 
         elif self.technique == 'foundation':
-            # MOMENT: patches + masking → embeddings
-            self.embedder = FoundationEmbedding(
-                patch_len=16,
-                d_model=d_model
-            )
+            # Patch + position + mask token embeddings
+            patch_len = getattr(self.args, 'patch_len', 16)
+            self.embedder_patch = nn.Linear(patch_len, d_model)
+            self.embedder_pos = nn.Parameter(torch.zeros(1, 5000, d_model))  # Max 5000 patches
+            self.embedder_mask = nn.Parameter(torch.zeros(1, 1, d_model))  # [MASK] token
 
         elif self.technique == 'hmm':
-            # RITMO: estados k → embeddings estructurados [μ_k, σ_k, A[k,:]]
-            # Se inicializa después de cargar parámetros HMM
-            pass  # Se crea en _load_hmm_params()
+            # EmbeddingGenerator con parámetros HMM
+            # Cache debe estar en ./cache/hmm_{data}_{K}.pth
+            cache_path = f'./cache/hmm_{self.args.data.lower()}_K5.pth'
+            if not os.path.exists(cache_path):
+                raise FileNotFoundError(f"Cache HMM no encontrado: {cache_path}. Ejecutar primero entrenamiento HMM.")
 
-        # Mover embedder a dispositivo (GPU si está disponible)
-        if hasattr(self, 'embedder'):
-            self.embedder = self.embedder.to(self.device)
-
-    def _load_hmm_params(self):
-        """
-        Carga parámetros HMM pre-entrenados desde cache.
-
-        Los HMM se entrenan previamente con Baum-Welch sobre:
-        - ETTh1, ETTh2, Weather, Electricity (4 datasets train)
-        - K=5 estados ocultos
-
-        Cache ubicado en: cache/hmm_{dataset}_K5.pth
-        """
-        dataset_name = self.args.data.lower()  # ej: 'etth1', 'etth2'
-        K = 5  # Número de estados (fijo según metodología)
-
-        # Ruta al archivo de cache
-        cache_path = f'./cache/hmm_{dataset_name}_K{K}.pth'
-
-        if not os.path.exists(cache_path):
-            raise FileNotFoundError(
-                f"No se encontró cache HMM en {cache_path}. "
-                f"Entrena el HMM primero con hmm/baum_welch.py"
+            hmm_params = torch.load(cache_path)
+            self.embedder = EmbeddingGenerator(
+                hmm_params=hmm_params,
+                d_model=d_model,
+                device=self.device
             )
-
-        # Cargar parámetros (A, mu, sigma, pi)
-        self.hmm_params = load_hmm_params(cache_path)
-
-        print(f'[HMM] Parámetros cargados desde {cache_path}')
-        print(f'  Estados: K={K}')
-        print(f'  mu (medias): {self.hmm_params["mu"]}')
-        print(f'  sigma (stds): {self.hmm_params["sigma"]}')
-
-        # Inicializar embedder HMM con parámetros cargados
-        self.embedder = EmbeddingGenerator(
-            hmm_params=self.hmm_params,
-            d_model=self.args.d_model,
-            device=self.device
-        )
+            # Guardar parámetros HMM para Viterbi
+            self.hmm_params = hmm_params
 
     def _build_model(self):
         """
-        Construye el modelo TransformerCommon.
-
-        Este Transformer es ÚNICO para todas las técnicas (comparación justa).
-        Solo recibe embeddings, no hace RevIN interno.
+        Construye TransformerCommon (arquitectura fija para Plan A).
 
         Returns:
-            TransformerCommon con arquitectura fija
+            Modelo TransformerCommon con hiperparámetros fijos
         """
-        model = TransformerCommon(self.args).float()
+        # TransformerCommon está registrado en exp_basic.py
+        model = self.model_dict['TransformerCommon'].Model(self.args).float()
 
-        # Multi-GPU si está disponible
+        # Multi-GPU si está habilitado
         if self.args.use_multi_gpu and self.args.use_gpu:
             model = nn.DataParallel(model, device_ids=self.args.device_ids)
 
         return model
 
-    def _tokenize_batch(self, batch_norm):
-        """
-        Tokeniza batch de datos normalizados según técnica seleccionada.
-
-        Args:
-            batch_norm: Datos normalizados [batch, seq_len, 1]
-
-        Returns:
-            Tokens según la técnica (formato varía por técnica)
-        """
-        # Convertir de tensor PyTorch a numpy para funciones de tokenización
-        # [batch, seq_len, 1] → [batch, seq_len]
-        batch_np = batch_norm.squeeze(-1).cpu().numpy()
-
-        batch_tokens = []
-
-        # Tokenizar cada muestra del batch
-        for i in range(batch_np.shape[0]):
-            serie = batch_np[i]  # [seq_len]
-
-            if self.technique == 'discretization':
-                # SAX: valores continuos → símbolos discretos
-                result = sax_discretize(serie, alphabet_size=8)
-                tokens = result['tokens']  # [seq_len] con valores 0-7
-
-            elif self.technique == 'text_based':
-                # LLMTime: valores → strings separados por espacios
-                result = text_based_tokenize(serie, precision=2)
-                tokens = result['tokens_per_value']  # Lista de strings
-
-            elif self.technique == 'patching':
-                # PatchTST: serie → patches no solapados
-                patches = patching_tokenize(serie, patch_len=16, stride=16)
-                tokens = patches  # [num_patches, 16]
-
-            elif self.technique == 'decomposition':
-                # DLinear/Autoformer: serie → trend + seasonal
-                result = decomposition_tokenize(serie, kernel_size=25)
-                tokens = result  # Dict con 'trend' y 'seasonal'
-
-            elif self.technique == 'foundation':
-                # MOMENT: patches + masking
-                result = foundation_tokenize(serie, patch_len=16, stride=16, mask_ratio=0.0)
-                tokens = result  # Dict con 'patches', 'mask', etc.
-
-            elif self.technique == 'hmm':
-                # RITMO: Viterbi decode → estados óptimos
-                states, _ = viterbi_decode(
-                    serie,
-                    self.hmm_params['A'],
-                    self.hmm_params['pi'],
-                    self.hmm_params['mu'],
-                    self.hmm_params['sigma']
-                )
-                tokens = states  # [seq_len] con valores 0-(K-1)
-
-            batch_tokens.append(tokens)
-
-        return batch_tokens
-
-    def _embed_tokens(self, batch_tokens):
-        """
-        Convierte tokens en embeddings usando embedder natural de la técnica.
-
-        Args:
-            batch_tokens: Lista de tokens (formato varía por técnica)
-
-        Returns:
-            Embeddings [batch, seq_len_tokens, d_model]
-            NOTA: seq_len_tokens varía por técnica (ej: patching tiene menos)
-        """
-        batch_embeds = []
-
-        for tokens in batch_tokens:
-            if self.technique == 'discretization':
-                # tokens: [seq_len] con valores 0-7
-                # embedding: [seq_len, d_model]
-                tokens_tensor = torch.from_numpy(tokens).long().to(self.device)
-                embeds = self.embedder(tokens_tensor)
-
-            elif self.technique == 'text_based':
-                # tokens: lista de strings
-                # embedding: [seq_len, d_model] (promedia caracteres por timestep)
-                embeds = self.embedder(tokens)  # TextBasedEmbedding.forward()
-
-            elif self.technique == 'patching':
-                # tokens: [num_patches, patch_len]
-                # embedding: [num_patches, d_model]
-                patches_tensor = torch.from_numpy(tokens).float().to(self.device)
-                embeds = self.embedder(patches_tensor)
-
-            elif self.technique == 'decomposition':
-                # tokens: dict con 'trend' y 'seasonal'
-                # embedding: [2, d_model] o [seq_len, d_model] según implementación
-                trend = torch.from_numpy(tokens['trend']).float().to(self.device)
-                seasonal = torch.from_numpy(tokens['seasonal']).float().to(self.device)
-                embeds = self.embedder(trend, seasonal)
-
-            elif self.technique == 'foundation':
-                # tokens: dict con 'patches'
-                # embedding: [num_patches, d_model]
-                patches_tensor = torch.from_numpy(tokens['patches']).float().to(self.device)
-                mask_tensor = torch.from_numpy(tokens['mask']).bool().to(self.device)
-                embeds = self.embedder(patches_tensor, mask_tensor)
-
-            elif self.technique == 'hmm':
-                # tokens: [seq_len] estados 0-(K-1)
-                # embedding: [seq_len, d_model] estructurado [μ, σ, A]
-                embeds = self.embedder.forward(tokens)
-
-            batch_embeds.append(embeds)
-
-        # Stack en batch dimension
-        # NOTA: Adaptive pooling en TransformerCommon maneja diferentes seq_len
-        batch_embeds_tensor = torch.stack(batch_embeds, dim=0)
-
-        return batch_embeds_tensor
-
     def _get_data(self, flag):
-        """
-        Obtiene DataLoader para train/val/test.
-
-        Reutiliza data_factory de Time-Series-Library.
-
-        Args:
-            flag: 'train', 'val', o 'test'
-
-        Returns:
-            data_set, data_loader
-        """
+        """Carga dataset y dataloader. flag: 'train', 'val', o 'test'"""
         data_set, data_loader = data_provider(self.args, flag)
         return data_set, data_loader
 
     def _select_optimizer(self):
-        """Selecciona optimizador (Adam por defecto)."""
-        model_optim = optim.Adam(self.model.parameters(), lr=self.args.learning_rate)
+        """
+        Crea optimizador Adam.
+
+        Optimiza parámetros del Transformer + embedder (NO RevIN, que no es aprendible).
+        """
+        # Parámetros del modelo + embedder
+        params = list(self.model.parameters())
+
+        # Añadir parámetros del embedder según técnica
+        if self.technique in ['discretization', 'text_based', 'patching']:
+            params += list(self.embedder.parameters())
+        elif self.technique == 'decomposition':
+            params += list(self.embedder_trend.parameters())
+            params += list(self.embedder_seasonal.parameters())
+        elif self.technique == 'foundation':
+            params += list(self.embedder_patch.parameters())
+            params += [self.embedder_pos, self.embedder_mask]
+        elif self.technique == 'hmm':
+            # EmbeddingGenerator tiene proyección lineal aprendible
+            params += list(self.embedder.projection.parameters())
+
+        model_optim = optim.Adam(params, lr=self.args.learning_rate)
         return model_optim
 
     def _select_criterion(self):
-        """Selecciona función de pérdida (MSE por defecto)."""
+        """Función de pérdida: MSE en espacio original (después de RevIN⁻¹)"""
         criterion = nn.MSELoss()
         return criterion
 
-    def vali(self, vali_data, vali_loader, criterion):
+    def _tokenize_batch(self, batch_x_norm):
         """
-        Validación en un epoch.
-
-        Pipeline:
-            1. RevIN normalize batch
-            2. Tokenizar
-            3. Embed
-            4. Forward TransformerCommon
-            5. RevIN denormalize salida
-            6. Calcular loss
+        Tokeniza batch según técnica especificada.
 
         Args:
-            vali_data: Dataset de validación
-            vali_loader: DataLoader de validación
-            criterion: Función de pérdida
+            batch_x_norm: Batch normalizado [B, L, C]
 
         Returns:
-            total_loss: Loss promedio en validación
+            Tokens según técnica (forma depende de técnica)
         """
-        total_loss = []
-        self.model.eval()  # Modo evaluación (desactiva dropout)
+        B, L, C = batch_x_norm.shape
+        tokens_list = []
 
-        with torch.no_grad():  # No calcular gradientes (más rápido)
-            for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(vali_loader):
-                # Mover datos a dispositivo
-                batch_x = batch_x.float().to(self.device)  # [batch, seq_len, enc_in]
-                batch_y = batch_y.float().to(self.device)  # [batch, pred_len, enc_in]
+        for i in range(B):
+            serie_norm = batch_x_norm[i, :, 0].detach().cpu().numpy()  # [L]
 
-                # === PASO 1: RevIN NORMALIZE ===
-                # Normalizar datos crudos ANTES de tokenizar
-                batch_x_norm = self.revin(batch_x, mode='norm')
+            if self.technique == 'discretization':
+                # SAX: símbolos discretos
+                symbols = discretize_sax(serie_norm, n_symbols=8)
+                tokens_list.append(torch.tensor(symbols, dtype=torch.long))
 
-                # === PASO 2: TOKENIZAR ===
-                # Convertir datos normalizados a tokens según técnica
-                batch_tokens = self._tokenize_batch(batch_x_norm)
+            elif self.technique == 'text_based':
+                # LLMTime: caracteres
+                text = series_to_text(serie_norm, decimal_places=2)
+                # Mapear caracteres a índices
+                char_to_idx = {c: i for i, c in enumerate('0123456789-. ')}
+                indices = [char_to_idx.get(c, 12) for c in text]  # 12 = unknown
+                tokens_list.append(torch.tensor(indices, dtype=torch.long))
 
-                # === PASO 3: EMBED ===
-                # Convertir tokens a embeddings [batch, seq_len_tokens, d_model]
-                batch_embeds = self._embed_tokens(batch_tokens)
+            elif self.technique == 'patching':
+                # PatchTST: patches
+                patches = patchify(serie_norm, patch_len=16, stride=16)
+                tokens_list.append(torch.tensor(patches, dtype=torch.float32))
 
-                # === PASO 4: TRANSFORMER ===
-                # Forward pass - salida en espacio normalizado
-                outputs_norm = self.model(batch_embeds)  # [batch, pred_len, enc_in]
+            elif self.technique == 'decomposition':
+                # DLinear/Autoformer: trend + seasonal
+                trend, seasonal = decompose_series(serie_norm, kernel_size=25)
+                # Stack como [L, 2]
+                components = np.stack([trend, seasonal], axis=-1)
+                tokens_list.append(torch.tensor(components, dtype=torch.float32))
 
-                # === PASO 5: RevIN DENORMALIZE ===
-                # Desnormalizar predicción a espacio original
-                outputs = self.revin(outputs_norm, mode='denorm')
+            elif self.technique == 'foundation':
+                # MOMENT: patches con masking
+                result = foundation_tokenize(serie_norm, patch_len=16, stride=16, mask_ratio=0.3)
+                patches = result['patches']
+                tokens_list.append(torch.tensor(patches, dtype=torch.float32))
 
-                # Ground truth (ya está en espacio original)
-                f_dim = -1 if self.args.features == 'MS' else 0
-                outputs = outputs[:, -self.args.pred_len:, f_dim:]
-                batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
+            elif self.technique == 'hmm':
+                # RITMO: Viterbi decoding
+                states = viterbi_decode(
+                    observations=serie_norm,
+                    pi=self.hmm_params['pi'].cpu().numpy(),
+                    A=self.hmm_params['A'].cpu().numpy(),
+                    mu=self.hmm_params['mu'].cpu().numpy(),
+                    sigma=self.hmm_params['sigma'].cpu().numpy()
+                )
+                tokens_list.append(torch.tensor(states, dtype=torch.long))
 
-                # Calcular loss
-                pred = outputs.detach().cpu()
-                true = batch_y.detach().cpu()
+        return tokens_list
 
-                loss = criterion(pred, true)
-                total_loss.append(loss.item())
-
-        total_loss = np.average(total_loss)
-        self.model.train()  # Volver a modo entrenamiento
-        return total_loss
-
-    def train(self, setting):
+    def _embed_tokens(self, tokens_list):
         """
-        Entrena el modelo.
-
-        Pipeline por epoch:
-            1. Cargar batch
-            2. RevIN normalize
-            3. Tokenizar según técnica
-            4. Embed con embedder natural
-            5. Forward TransformerCommon
-            6. RevIN denormalize salida
-            7. Calcular loss y backprop
-            8. Validar
+        Genera embeddings desde tokens usando embedder natural.
 
         Args:
-            setting: String identificador del experimento
+            tokens_list: Lista de tokens (uno por muestra en batch)
+
+        Returns:
+            Embeddings [B, seq_len, d_model]
         """
-        # Obtener dataloaders
-        train_data, train_loader = self._get_data(flag='train')
-        vali_data, vali_loader = self._get_data(flag='val')
-        test_data, test_loader = self._get_data(flag='test')
+        embeddings_list = []
 
-        # Directorio para guardar checkpoints
-        path = os.path.join(self.args.checkpoints, setting)
-        if not os.path.exists(path):
-            os.makedirs(path)
+        for tokens in tokens_list:
+            tokens = tokens.to(self.device)
 
-        # Utilidades de entrenamiento
-        time_now = time.time()
-        train_steps = len(train_loader)
-        early_stopping = EarlyStopping(patience=self.args.patience, verbose=True)
+            if self.technique in ['discretization', 'text_based']:
+                # Lookup table: [seq_len] → [seq_len, d_model]
+                embeds = self.embedder(tokens)
 
-        model_optim = self._select_optimizer()
-        criterion = self._select_criterion()
+            elif self.technique == 'patching':
+                # Proyección lineal: [num_patches, patch_len] → [num_patches, d_model]
+                embeds = self.embedder(tokens)
 
-        # Training loop
-        for epoch in range(self.args.train_epochs):
-            iter_count = 0
-            train_loss = []
+            elif self.technique == 'decomposition':
+                # Proyectar trend y seasonal por separado, concatenar
+                trend = tokens[:, 0].unsqueeze(-1)  # [L, 1]
+                seasonal = tokens[:, 1].unsqueeze(-1)  # [L, 1]
+                embed_trend = self.embedder_trend(trend)  # [L, d_model//2]
+                embed_seasonal = self.embedder_seasonal(seasonal)  # [L, d_model//2]
+                embeds = torch.cat([embed_trend, embed_seasonal], dim=-1)  # [L, d_model]
 
-            self.model.train()  # Modo entrenamiento
-            epoch_time = time.time()
+            elif self.technique == 'foundation':
+                # Patch + position embeddings
+                patches = tokens  # [num_patches, patch_len]
+                embeds = self.embedder_patch(patches)  # [num_patches, d_model]
+                # Añadir positional
+                embeds = embeds + self.embedder_pos[:, :embeds.shape[0], :]
 
-            for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(train_loader):
-                iter_count += 1
-                model_optim.zero_grad()  # Reset gradientes
+            elif self.technique == 'hmm':
+                # EmbeddingGenerator: [seq_len] → [seq_len, d_model]
+                embeds = self.embedder(tokens)
 
-                # Mover datos a dispositivo
+            embeddings_list.append(embeds)
+
+        # Pad/truncate a longitud común si es necesario
+        # Por ahora asumimos longitud fija o adaptive pooling maneja diferencias
+        max_len = max(e.shape[0] for e in embeddings_list)
+        padded = []
+        for e in embeddings_list:
+            if e.shape[0] < max_len:
+                pad = torch.zeros(max_len - e.shape[0], e.shape[1], device=e.device)
+                e = torch.cat([e, pad], dim=0)
+            padded.append(e)
+
+        # Stack: [B, seq_len, d_model]
+        batch_embeds = torch.stack(padded, dim=0)
+        return batch_embeds
+
+    def vali(self, vali_data, vali_loader, criterion):
+        """
+        Evalúa modelo en conjunto de validación.
+
+        Pipeline:
+            1. RevIN normalize
+            2. Tokenizar
+            3. Embed
+            4. Forward Transformer
+            5. RevIN denormalize
+            6. Calcular loss
+
+        Returns:
+            Pérdida promedio
+        """
+        total_loss = []
+        self.model.eval()
+
+        with torch.no_grad():
+            for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(vali_loader):
+                # Mover a dispositivo
                 batch_x = batch_x.float().to(self.device)
                 batch_y = batch_y.float().to(self.device)
 
@@ -498,22 +345,103 @@ class Exp_Plan_A(Exp_Basic):
                 # 3. Embed (con embedder natural)
                 batch_embeds = self._embed_tokens(batch_tokens)
 
-                # 4. Forward Transformer
+                # 4. Forward Transformer (encoder-only, NO decoder input)
                 outputs_norm = self.model(batch_embeds)
 
                 # 5. RevIN denormalize
                 outputs = self.revin(outputs_norm, mode='denorm')
 
-                # Ground truth
+                # 6. Calcular loss
+                # Extraer predicciones (últimos pred_len timesteps)
                 f_dim = -1 if self.args.features == 'MS' else 0
                 outputs = outputs[:, -self.args.pred_len:, f_dim:]
-                batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
+                batch_y = batch_y[:, -self.args.pred_len:, f_dim:]
 
-                # Loss y backprop
                 loss = criterion(outputs, batch_y)
-                train_loss.append(loss.item())
+                total_loss.append(loss.item())
 
-                # Logging cada 100 iteraciones
+        total_loss = np.average(total_loss)
+        self.model.train()
+        return total_loss
+
+    def train(self, setting):
+        """
+        Loop de entrenamiento con early stopping.
+
+        Args:
+            setting: String identificador del experimento
+
+        Returns:
+            Modelo entrenado
+        """
+        # Cargar datos
+        train_data, train_loader = self._get_data(flag='train')
+        vali_data, vali_loader = self._get_data(flag='val')
+        test_data, test_loader = self._get_data(flag='test')
+
+        # Directorio de checkpoints
+        path = os.path.join(self.args.checkpoints, setting)
+        if not os.path.exists(path):
+            os.makedirs(path)
+
+        time_now = time.time()
+        train_steps = len(train_loader)
+        early_stopping = EarlyStopping(patience=self.args.patience, verbose=True)
+
+        model_optim = self._select_optimizer()
+        criterion = self._select_criterion()
+
+        if self.args.use_amp:
+            scaler = torch.cuda.amp.GradScaler()
+
+        # === LOOP DE EPOCHS ===
+        for epoch in range(self.args.train_epochs):
+            iter_count = 0
+            train_loss = []
+            self.model.train()
+            epoch_time = time.time()
+
+            for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(train_loader):
+                iter_count += 1
+                model_optim.zero_grad()
+
+                # Mover a dispositivo
+                batch_x = batch_x.float().to(self.device)
+                batch_y = batch_y.float().to(self.device)
+
+                # === PIPELINE PLAN A ===
+
+                # 1. RevIN normalize
+                batch_x_norm = self.revin(batch_x, mode='norm')
+
+                # 2. Tokenizar
+                batch_tokens = self._tokenize_batch(batch_x_norm)
+
+                # 3. Embed
+                batch_embeds = self._embed_tokens(batch_tokens)
+
+                # 4. Forward Transformer
+                if self.args.use_amp:
+                    with torch.cuda.amp.autocast():
+                        outputs_norm = self.model(batch_embeds)
+                        # 5. RevIN denormalize
+                        outputs = self.revin(outputs_norm, mode='denorm')
+                        # 6. Loss
+                        f_dim = -1 if self.args.features == 'MS' else 0
+                        outputs = outputs[:, -self.args.pred_len:, f_dim:]
+                        batch_y = batch_y[:, -self.args.pred_len:, f_dim:]
+                        loss = criterion(outputs, batch_y)
+                        train_loss.append(loss.item())
+                else:
+                    outputs_norm = self.model(batch_embeds)
+                    outputs = self.revin(outputs_norm, mode='denorm')
+                    f_dim = -1 if self.args.features == 'MS' else 0
+                    outputs = outputs[:, -self.args.pred_len:, f_dim:]
+                    batch_y = batch_y[:, -self.args.pred_len:, f_dim:]
+                    loss = criterion(outputs, batch_y)
+                    train_loss.append(loss.item())
+
+                # Logging
                 if (i + 1) % 100 == 0:
                     print(f"\titers: {i+1}, epoch: {epoch+1} | loss: {loss.item():.7f}")
                     speed = (time.time() - time_now) / iter_count
@@ -522,53 +450,48 @@ class Exp_Plan_A(Exp_Basic):
                     iter_count = 0
                     time_now = time.time()
 
-                # Backpropagation
-                loss.backward()
-                model_optim.step()
+                # Backward
+                if self.args.use_amp:
+                    scaler.scale(loss).backward()
+                    scaler.step(model_optim)
+                    scaler.update()
+                else:
+                    loss.backward()
+                    model_optim.step()
 
+            # Fin de epoch
             print(f"Epoch: {epoch+1} cost time: {time.time() - epoch_time}")
             train_loss = np.average(train_loss)
             vali_loss = self.vali(vali_data, vali_loader, criterion)
             test_loss = self.vali(test_data, test_loader, criterion)
 
-            print(f"Epoch: {epoch+1}, Steps: {train_steps} | Train Loss: {train_loss:.7f} "
-                  f"Vali Loss: {vali_loss:.7f} Test Loss: {test_loss:.7f}")
+            print(f"Epoch: {epoch+1}, Steps: {train_steps} | Train Loss: {train_loss:.7f} Vali Loss: {vali_loss:.7f} Test Loss: {test_loss:.7f}")
 
-            # Early stopping
             early_stopping(vali_loss, self.model, path)
             if early_stopping.early_stop:
                 print("Early stopping")
                 break
 
-            # Ajustar learning rate
             adjust_learning_rate(model_optim, epoch + 1, self.args)
 
         # Cargar mejor modelo
-        best_model_path = path + '/checkpoint.pth'
+        best_model_path = path + '/' + 'checkpoint.pth'
         self.model.load_state_dict(torch.load(best_model_path))
 
         return self.model
 
     def test(self, setting, test=0):
         """
-        Evalúa el modelo en test set.
-
-        Calcula MSE y MAE, guarda predicciones y ground truth.
+        Evalúa modelo en test y guarda métricas.
 
         Args:
             setting: Identificador del experimento
-            test: Si 0 usa test loader, si 1 usa val loader
-
-        Returns:
-            None (imprime métricas y guarda resultados)
+            test: Si 1, carga modelo desde checkpoint
         """
-        test_data, test_loader = self._get_data(flag='test' if test == 0 else 'val')
-
+        test_data, test_loader = self._get_data(flag='test')
         if test:
             print('loading model')
-            self.model.load_state_dict(
-                torch.load(os.path.join('./checkpoints/' + setting, 'checkpoint.pth'))
-            )
+            self.model.load_state_dict(torch.load(os.path.join('./checkpoints/' + setting, 'checkpoint.pth')))
 
         preds = []
         trues = []
@@ -582,57 +505,75 @@ class Exp_Plan_A(Exp_Basic):
                 batch_x = batch_x.float().to(self.device)
                 batch_y = batch_y.float().to(self.device)
 
-                # Pipeline completo
+                # === PIPELINE PLAN A ===
                 batch_x_norm = self.revin(batch_x, mode='norm')
                 batch_tokens = self._tokenize_batch(batch_x_norm)
                 batch_embeds = self._embed_tokens(batch_tokens)
-                outputs_norm = self.model(batch_embeds)
+
+                if self.args.use_amp:
+                    with torch.cuda.amp.autocast():
+                        outputs_norm = self.model(batch_embeds)
+                else:
+                    outputs_norm = self.model(batch_embeds)
+
                 outputs = self.revin(outputs_norm, mode='denorm')
 
+                # Extraer predicciones
                 f_dim = -1 if self.args.features == 'MS' else 0
-                outputs = outputs[:, -self.args.pred_len:, f_dim:]
-                batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
+                outputs = outputs[:, -self.args.pred_len:, :]
+                batch_y = batch_y[:, -self.args.pred_len:, :]
 
                 outputs = outputs.detach().cpu().numpy()
                 batch_y = batch_y.detach().cpu().numpy()
 
-                pred = outputs
-                true = batch_y
+                # Inverse transform si hay escalado adicional
+                if test_data.scale and self.args.inverse:
+                    shape = batch_y.shape
+                    outputs = test_data.inverse_transform(outputs.reshape(shape[0] * shape[1], -1)).reshape(shape)
+                    batch_y = test_data.inverse_transform(batch_y.reshape(shape[0] * shape[1], -1)).reshape(shape)
 
-                preds.append(pred)
-                trues.append(true)
+                outputs = outputs[:, :, f_dim:]
+                batch_y = batch_y[:, :, f_dim:]
 
-                # Visualizar algunos ejemplos
+                preds.append(outputs)
+                trues.append(batch_y)
+
+                # Visualizar cada 20 muestras
                 if i % 20 == 0:
                     input = batch_x.detach().cpu().numpy()
-                    gt = np.concatenate((input[0, :, -1], true[0, :, -1]), axis=0)
-                    pd = np.concatenate((input[0, :, -1], pred[0, :, -1]), axis=0)
+                    if test_data.scale and self.args.inverse:
+                        shape = input.shape
+                        input = test_data.inverse_transform(input.reshape(shape[0] * shape[1], -1)).reshape(shape)
+                    gt = np.concatenate((input[0, :, -1], batch_y[0, :, -1]), axis=0)
+                    pd = np.concatenate((input[0, :, -1], outputs[0, :, -1]), axis=0)
                     visual(gt, pd, os.path.join(folder_path, str(i) + '.pdf'))
 
-        preds = np.array(preds)
-        trues = np.array(trues)
+        # Concatenar predicciones
+        preds = np.concatenate(preds, axis=0)
+        trues = np.concatenate(trues, axis=0)
         print('test shape:', preds.shape, trues.shape)
         preds = preds.reshape(-1, preds.shape[-2], preds.shape[-1])
         trues = trues.reshape(-1, trues.shape[-2], trues.shape[-1])
         print('test shape:', preds.shape, trues.shape)
 
-        # Resultado
+        # Guardar resultados
         folder_path = './results/' + setting + '/'
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
 
+        # Métricas
         mae, mse, rmse, mape, mspe = metric(preds, trues)
-        print(f'Technique: {self.technique} | MSE: {mse:.7f}, MAE: {mae:.7f}')
+        print(f'Technique: {self.technique}')
+        print(f'mse:{mse}, mae:{mae}')
 
-        # Guardar métricas
-        f = open(os.path.join(folder_path, 'result.txt'), 'a')
+        # Guardar en archivo de resultados
+        f = open("result_plan_a.txt", 'a')
         f.write(setting + "  \n")
-        f.write(f'Technique: {self.technique} | MSE: {mse:.7f}, MAE: {mae:.7f}')
-        f.write('\n')
+        f.write(f'Technique: {self.technique}\n')
+        f.write(f'mse:{mse}, mae:{mae}\n')
         f.write('\n')
         f.close()
 
-        # Guardar predicciones
         np.save(folder_path + 'metrics.npy', np.array([mae, mse, rmse, mape, mspe]))
         np.save(folder_path + 'pred.npy', preds)
         np.save(folder_path + 'true.npy', trues)

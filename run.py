@@ -7,6 +7,7 @@ from exp.exp_imputation import Exp_Imputation
 from exp.exp_short_term_forecasting import Exp_Short_Term_Forecast
 from exp.exp_anomaly_detection import Exp_Anomaly_Detection
 from exp.exp_classification import Exp_Classification
+from exp.exp_plan_a import Exp_Plan_A
 from utils.print_args import print_args
 import random
 import numpy as np
@@ -156,6 +157,10 @@ if __name__ == '__main__':
     parser.add_argument('--top_p', type=float, default=0.5, help='Dynamic Routing in MoE')
     parser.add_argument('--pos', type=int, choices=[0, 1], default=1, help='Positional Embedding. Set pos to 0 or 1')
 
+    # Plan A
+    parser.add_argument('--technique', type=str, default='hmm',
+                        help='Tokenization technique for Plan A, options:[discretization, text_based, patching, decomposition, foundation, hmm]')
+
     args = parser.parse_args()
     if torch.cuda.is_available() and args.use_gpu:
         args.device = torch.device('cuda:{}'.format(args.gpu))
@@ -186,6 +191,8 @@ if __name__ == '__main__':
         Exp = Exp_Anomaly_Detection
     elif args.task_name == 'classification':
         Exp = Exp_Classification
+    elif args.task_name == 'plan_a':
+        Exp = Exp_Plan_A
     else:
         Exp = Exp_Long_Term_Forecast
 
