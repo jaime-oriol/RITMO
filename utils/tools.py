@@ -129,22 +129,36 @@ class StandardScaler():
         return (data * self.std) + self.mean  # Revertir normalización
 
 
-def visual(true, preds=None, name='./pic/test.pdf'):
+def visual(true, preds=None, name='./pic/test.pdf', mse=None, mae=None):
     """
-    Visualiza predicción vs ground truth.
+    Visualiza predicción vs ground truth con métricas.
 
-    true: Serie real
-    preds: Serie predicha (opcional)
-    name: Ruta de guardado
+    Args:
+        true: Serie real (ground truth)
+        preds: Serie predicha (opcional)
+        name: Ruta de guardado
+        mse: Mean Squared Error (opcional)
+        mae: Mean Absolute Error (opcional)
     """
-    plt.figure()  # Crear nueva figura
+    # Aspect ratio 3:1 para visualizar mejor series temporales largas
+    plt.figure(figsize=(12, 4))
+
     if preds is not None:
-        # Graficar predicción si se proporciona
-        plt.plot(preds, label='Prediction', linewidth=2)
-    # Graficar serie real (siempre)
-    plt.plot(true, label='GroundTruth', linewidth=2)
-    plt.legend()  # Añadir leyenda
-    plt.savefig(name, bbox_inches='tight')  # Guardar sin whitespace extra
+        plt.plot(preds, label='Prediction', linewidth=2, alpha=0.8)
+
+    plt.plot(true, label='GroundTruth', linewidth=2, alpha=0.8)
+
+    # Mostrar métricas en título para quick assessment visual
+    if mse is not None and mae is not None:
+        plt.title(f'MSE: {mse:.4f} | MAE: {mae:.4f}', fontsize=12, fontweight='bold')
+
+    plt.xlabel('Timestep', fontsize=10)
+    plt.ylabel('Value', fontsize=10)
+    plt.legend(loc='best', fontsize=10)
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(name, dpi=150, bbox_inches='tight')
+    plt.close()  # Liberar memoria
 
 
 def adjustment(gt, pred):

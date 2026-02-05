@@ -45,7 +45,18 @@ class EmbeddingGenerator(nn.Module):
 
         # Guardar configuración
         self.device = device
-        K = len(hmm_params['mu'])  # Número de estados
+
+        # Convertir parámetros a numpy si son tensores
+        if isinstance(hmm_params['mu'], torch.Tensor):
+            mu = hmm_params['mu'].cpu().numpy()
+            sigma = hmm_params['sigma'].cpu().numpy()
+            A = hmm_params['A'].cpu().numpy()
+        else:
+            mu = hmm_params['mu']
+            sigma = hmm_params['sigma']
+            A = hmm_params['A']
+
+        K = len(mu)  # Número de estados
         self.K = K
         self.embedding_dim = 2 + K  # Tamaño: mu + sigma + K transiciones
         self.d_model = d_model
@@ -55,9 +66,9 @@ class EmbeddingGenerator(nn.Module):
         embedding_table = np.zeros((K, self.embedding_dim))
         for k in range(K):
             embedding_table[k] = np.concatenate([
-                [hmm_params['mu'][k]],      # Media del estado k
-                [hmm_params['sigma'][k]],   # Desviación del estado k
-                hmm_params['A'][k, :]       # Fila k de matriz de transición
+                [mu[k]],      # Media del estado k
+                [sigma[k]],   # Desviación del estado k
+                A[k, :]       # Fila k de matriz de transición
             ])
 
         # Guardar tabla como "buffer" (no se entrena, viene del HMM)
@@ -70,23 +81,28 @@ class EmbeddingGenerator(nn.Module):
         # Esta SÍ se entrena (tiene gradientes)
         self.projection = nn.Linear(self.embedding_dim, d_model)
 
-    def forward(self, tokens: np.ndarray) -> torch.Tensor:
+    def forward(self, tokens) -> torch.Tensor:
         """
         Convierte tokens en embeddings.
 
         Entrada:
-            tokens: Lista de estados [0, 1, 2, ...] de longitud T
+            tokens: Lista de estados [0, 1, 2, ...] de longitud T (numpy array o tensor)
 
         Salida:
             Tensor de embeddings [T, d_model] listo para el Transformer
         """
-        # Verificar que los tokens estén en rango válido
-        if np.any(tokens < 0) or np.any(tokens >= self.K):
-            raise ValueError(f"tokens debe estar en [0, {self.K-1}], "
-                           f"recibido: min={tokens.min()}, max={tokens.max()}")
+        # Convertir a tensor si es numpy array
+        if isinstance(tokens, np.ndarray):
+            tokens_tensor = torch.from_numpy(tokens).long().to(self.device)
+        elif isinstance(tokens, torch.Tensor):
+            tokens_tensor = tokens.long().to(self.device)
+        else:
+            raise TypeError(f"tokens debe ser np.ndarray o torch.Tensor, recibido: {type(tokens)}")
 
-        # Convertir array numpy a tensor PyTorch
-        tokens_tensor = torch.from_numpy(tokens).long().to(self.device)
+        # Verificar que los tokens estén en rango válido
+        if torch.any(tokens_tensor < 0) or torch.any(tokens_tensor >= self.K):
+            raise ValueError(f"tokens debe estar en [0, {self.K-1}], "
+                           f"recibido: min={tokens_tensor.min()}, max={tokens_tensor.max()}")
 
         # Buscar cada token en la tabla de embeddings
         # tokens[T] → embeddings[T, 2+K]

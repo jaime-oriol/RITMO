@@ -21,16 +21,17 @@ DATASETS=("ETTh1" "ETTh2" "Weather" "Electricity" "Traffic" "Exchange")
 PRED_LENS=(96 192 336 720)
 
 # Hiperparámetros FIJOS para Plan A (comparación justa)
-SEQ_LEN=96           # Input length
-D_MODEL=128          # Embedding dimension
-N_HEADS=4            # Attention heads
-E_LAYERS=2           # Encoder layers
-D_FF=256             # Feed-forward dimension
-DROPOUT=0.1          # Dropout rate
-BATCH_SIZE=32        # Batch size
-LEARNING_RATE=0.001  # Learning rate
-TRAIN_EPOCHS=10      # Training epochs
-PATIENCE=3           # Early stopping patience
+# Estos valores son iguales para todas las técnicas para asegurar comparación controlada
+SEQ_LEN=96           # Longitud de secuencia de entrada
+D_MODEL=256          # Dimensión de embeddings del Transformer (capacidad del modelo)
+N_HEADS=4            # Número de attention heads (paralelización de atención)
+E_LAYERS=3           # Número de capas del encoder (profundidad del modelo)
+D_FF=512             # Dimensión de feed-forward (2×d_model, estándar en Transformers)
+DROPOUT=0.1          # Tasa de dropout para regularización (evita overfitting)
+BATCH_SIZE=32        # Tamaño de batch (compromiso memoria/estabilidad)
+LEARNING_RATE=0.0001 # Learning rate del optimizador (controla tamaño de paso en gradiente)
+TRAIN_EPOCHS=20      # Máximo de epochs de entrenamiento
+PATIENCE=5           # Epochs sin mejora antes de early stopping
 
 # === FUNCIONES AUXILIARES ===
 
@@ -110,6 +111,33 @@ get_enc_in() {
     esac
 }
 
+check_experiment_completed() {
+    # Verifica si un experimento ya fue completado
+    # Args: technique, dataset, pred_len
+    local technique=$1
+    local dataset=$2
+    local pred_len=$3
+
+    # Patrón del directorio de resultados (más flexible)
+    # Formato: ./results/plan_a_{dataset}_{seq_len}_{pred_len}_*
+    local result_pattern="./results/plan_a_${dataset}_${SEQ_LEN}_${pred_len}_*"
+
+    # Comprobar si existe el directorio y contiene metrics.npy
+    if compgen -G "$result_pattern" > /dev/null; then
+        # Verificar que contiene el archivo metrics.npy (señal de que completó)
+        for dir in $result_pattern; do
+            # Comprobar que el directorio corresponde a la técnica (case-insensitive)
+            if echo "$dir" | grep -iq "Plan_A.*${technique}"; then
+                if [ -f "$dir/metrics.npy" ]; then
+                    return 0  # Completado
+                fi
+            fi
+        done
+    fi
+
+    return 1  # No completado
+}
+
 # === PIPELINE PRINCIPAL ===
 
 echo "============================================================"
@@ -137,9 +165,14 @@ echo ""
 echo "============================================================"
 echo ""
 
-# Contador de experimentos
+# Contadores de experimentos
 counter=0
+completed=0
+skipped=0
 total_experiments=$((${#TECHNIQUES[@]} * ${#DATASETS[@]} * ${#PRED_LENS[@]}))
+
+echo "Verificando experimentos ya completados..."
+echo ""
 
 # Triple loop: Técnica × Dataset × Horizonte
 for technique in "${TECHNIQUES[@]}"; do
@@ -169,6 +202,14 @@ for technique in "${TECHNIQUES[@]}"; do
             echo "Horizonte: $pred_len"
             echo "----------------------------"
 
+            # === VERIFICAR SI YA COMPLETADO ===
+            if check_experiment_completed "$technique" "$data" "$pred_len"; then
+                echo "[SKIP] Ya completado"
+                echo ""
+                skipped=$((skipped + 1))
+                continue
+            fi
+
             # Identificador del experimento
             model_id="${data}_${SEQ_LEN}_${pred_len}"
 
@@ -196,23 +237,37 @@ for technique in "${TECHNIQUES[@]}"; do
               --learning_rate $LEARNING_RATE \
               --train_epochs $TRAIN_EPOCHS \
               --patience $PATIENCE \
+              --use_gpu 0 \
               --technique $technique \
               --des "Plan_A_${technique}" \
               --itr 1
 
-            echo ""
-            echo "✓ Completado: $technique - $data - pred_len=$pred_len"
-            echo ""
+            if [ $? -eq 0 ]; then
+                echo ""
+                echo "[OK] Completado: $technique - $data - pred_len=$pred_len"
+                echo ""
+                completed=$((completed + 1))
+            else
+                echo ""
+                echo "[ERROR] $technique - $data - pred_len=$pred_len"
+                echo "El script continuará con el siguiente experimento..."
+                echo ""
+            fi
         done
     done
 done
 
 echo ""
 echo "============================================================"
-echo "✅ PLAN A COMPLETADO"
+echo "PLAN A COMPLETADO"
 echo "============================================================"
 echo ""
-echo "Total experimentos ejecutados: $counter"
+echo "Estadísticas:"
+echo "  - Total experimentos: $total_experiments"
+echo "  - Ejecutados en esta sesión: $completed"
+echo "  - Saltados (ya completados): $skipped"
+echo "  - Progreso total: $((completed + skipped))/$total_experiments ($((100 * (completed + skipped) / total_experiments))%)"
+echo ""
 echo "Resultados guardados en:"
 echo "  - Checkpoints: ./checkpoints/"
 echo "  - Test results: ./test_results/"

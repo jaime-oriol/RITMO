@@ -31,10 +31,10 @@ import warnings
 import numpy as np
 
 # Importar técnicas de tokenización
-from tecnicas.discretization import discretize_sax
-from tecnicas.text_based import series_to_text
-from tecnicas.patching import patchify
-from tecnicas.decomposition import decompose_series
+from tecnicas.discretization import sax_discretize
+from tecnicas.text_based import text_based_tokenize
+from tecnicas.patching import patching_tokenize
+from tecnicas.decomposition import decomposition_tokenize
 from tecnicas.foundation import foundation_tokenize
 
 # Importar HMM para técnica RITMO
@@ -210,12 +210,13 @@ class Exp_Plan_A(Exp_Basic):
 
             if self.technique == 'discretization':
                 # SAX: símbolos discretos
-                symbols = discretize_sax(serie_norm, n_symbols=8)
-                tokens_list.append(torch.tensor(symbols, dtype=torch.long))
+                result = sax_discretize(serie_norm, alphabet_size=8)
+                tokens_list.append(torch.tensor(result['tokens'], dtype=torch.long))
 
             elif self.technique == 'text_based':
                 # LLMTime: caracteres
-                text = series_to_text(serie_norm, decimal_places=2)
+                result = text_based_tokenize(serie_norm, precision=2)
+                text = result['text']
                 # Mapear caracteres a índices
                 char_to_idx = {c: i for i, c in enumerate('0123456789-. ')}
                 indices = [char_to_idx.get(c, 12) for c in text]  # 12 = unknown
@@ -223,12 +224,14 @@ class Exp_Plan_A(Exp_Basic):
 
             elif self.technique == 'patching':
                 # PatchTST: patches
-                patches = patchify(serie_norm, patch_len=16, stride=16)
+                patches = patching_tokenize(serie_norm, patch_len=16, stride=16)
                 tokens_list.append(torch.tensor(patches, dtype=torch.float32))
 
             elif self.technique == 'decomposition':
                 # DLinear/Autoformer: trend + seasonal
-                trend, seasonal = decompose_series(serie_norm, kernel_size=25)
+                result = decomposition_tokenize(serie_norm, kernel_size=25)
+                trend = result['trend']
+                seasonal = result['seasonal']
                 # Stack como [L, 2]
                 components = np.stack([trend, seasonal], axis=-1)
                 tokens_list.append(torch.tensor(components, dtype=torch.float32))
@@ -241,7 +244,7 @@ class Exp_Plan_A(Exp_Basic):
 
             elif self.technique == 'hmm':
                 # RITMO: Viterbi decoding
-                states = viterbi_decode(
+                states, _ = viterbi_decode(
                     observations=serie_norm,
                     pi=self.hmm_params['pi'].cpu().numpy(),
                     A=self.hmm_params['A'].cpu().numpy(),
@@ -538,15 +541,35 @@ class Exp_Plan_A(Exp_Basic):
                 preds.append(outputs)
                 trues.append(batch_y)
 
-                # Visualizar cada 20 muestras
+                # Visualizar cada 20 muestras para quality check
                 if i % 20 == 0:
-                    input = batch_x.detach().cpu().numpy()
+                    # Copias para no modificar arrays originales
+                    input_viz = batch_x.detach().cpu().numpy()
+                    output_viz = outputs.copy()
+                    true_viz = batch_y.copy()
+
+                    # Desnormalizar: convertir de escala normalizada a escala original
+                    # para interpretabilidad en gráficos
                     if test_data.scale and self.args.inverse:
-                        shape = input.shape
-                        input = test_data.inverse_transform(input.reshape(shape[0] * shape[1], -1)).reshape(shape)
-                    gt = np.concatenate((input[0, :, -1], batch_y[0, :, -1]), axis=0)
-                    pd = np.concatenate((input[0, :, -1], outputs[0, :, -1]), axis=0)
-                    visual(gt, pd, os.path.join(folder_path, str(i) + '.pdf'))
+                        shape = input_viz.shape
+                        input_viz = test_data.inverse_transform(input_viz.reshape(shape[0] * shape[1], -1)).reshape(shape)
+                        shape = output_viz.shape
+                        output_viz = test_data.inverse_transform(output_viz.reshape(shape[0] * shape[1], -1)).reshape(shape)
+                        shape = true_viz.shape
+                        true_viz = test_data.inverse_transform(true_viz.reshape(shape[0] * shape[1], -1)).reshape(shape)
+
+                    # Concatenar input + output para mostrar contexto completo en gráfico
+                    # (input histórico + predicción futura)
+                    gt = np.concatenate((input_viz[0, :, -1], true_viz[0, :, -1]), axis=0)
+                    pd = np.concatenate((input_viz[0, :, -1], output_viz[0, :, -1]), axis=0)
+
+                    # Métricas de esta muestra individual para mostrar en título
+                    sample_mse = np.mean((output_viz[0, :, -1] - true_viz[0, :, -1]) ** 2)
+                    sample_mae = np.mean(np.abs(output_viz[0, :, -1] - true_viz[0, :, -1]))
+
+                    # Guardar gráfico con métricas
+                    visual(gt, pd, os.path.join(folder_path, str(i) + '.pdf'),
+                          mse=sample_mse, mae=sample_mae)
 
         # Concatenar predicciones
         preds = np.concatenate(preds, axis=0)
