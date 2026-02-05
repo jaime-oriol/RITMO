@@ -24,26 +24,26 @@ def adjust_learning_rate(optimizer, epoch, args):
     - cosine: Cosine annealing
     """
     if args.lradj == 'type1':
-        # Decay exponencial agresivo
+        # Decay exponencial agresivo: cada epoch multiplica por 0.5
         lr_adjust = {epoch: args.learning_rate * (0.5 ** ((epoch - 1) // 1))}
     elif args.lradj == 'type2':
-        # Schedule manual
+        # Schedule manual: LR predefinido para cada milestone
         lr_adjust = {
             2: 5e-5, 4: 1e-5, 6: 5e-6, 8: 1e-6,
             10: 5e-7, 15: 1e-7, 20: 5e-8
         }
     elif args.lradj == 'type3':
-        # Warmup 3 epochs, luego decay suave
+        # Warmup 3 epochs, luego decay geométrico 0.9 por epoch
         lr_adjust = {epoch: args.learning_rate if epoch < 3 else args.learning_rate * (0.9 ** ((epoch - 3) // 1))}
     elif args.lradj == "cosine":
-        # Cosine annealing
+        # Cosine annealing: curva suave de 1.0 a 0.0
         lr_adjust = {epoch: args.learning_rate /2 * (1 + math.cos(epoch / args.train_epochs * math.pi))}
 
-    # Aplicar nuevo LR
+    # Aplicar nuevo LR si corresponde este epoch
     if epoch in lr_adjust.keys():
-        lr = lr_adjust[epoch]
-        for param_group in optimizer.param_groups:
-            param_group['lr'] = lr
+        lr = lr_adjust[epoch]  # Obtener LR para este epoch
+        for param_group in optimizer.param_groups:  # Iterar grupos de parámetros
+            param_group['lr'] = lr  # Actualizar LR de cada grupo
         print('Updating learning rate to {}'.format(lr))
 
 
@@ -68,28 +68,32 @@ class EarlyStopping:
 
     def __call__(self, val_loss, model, path):
         """Evalúa si debe parar y guarda mejor modelo."""
-        score = -val_loss  # Negativo porque menor loss es mejor
+        score = -val_loss  # Negativo porque menor loss es mejor (score más alto = mejor)
         if self.best_score is None:
-            # Primera vez
+            # Primera época: inicializar y guardar
             self.best_score = score
             self.save_checkpoint(val_loss, model, path)
         elif score < self.best_score + self.delta:
-            # No mejoró lo suficiente
-            self.counter += 1
+            # No mejoró (score actual < mejor + delta mínimo)
+            self.counter += 1  # Incrementar contador de epochs sin mejora
             print(f'EarlyStopping counter: {self.counter} out of {self.patience}')
             if self.counter >= self.patience:
+                # Alcanzado el límite: activar flag de parada
                 self.early_stop = True
         else:
-            # Mejoró: guardar y resetear contador
+            # Mejoró suficientemente: guardar y resetear
             self.best_score = score
             self.save_checkpoint(val_loss, model, path)
-            self.counter = 0
+            self.counter = 0  # Resetear contador
 
     def save_checkpoint(self, val_loss, model, path):
         """Guarda modelo cuando val_loss mejora."""
         if self.verbose:
+            # Informar mejora si modo verbose activado
             print(f'Validation loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f}).  Saving model ...')
+        # Guardar state_dict (pesos del modelo) en disco
         torch.save(model.state_dict(), path + '/' + 'checkpoint.pth')
+        # Actualizar mejor loss registrado
         self.val_loss_min = val_loss
 
 
@@ -118,11 +122,11 @@ class StandardScaler():
 
     def transform(self, data):
         """Normaliza: (x - mean) / std"""
-        return (data - self.mean) / self.std
+        return (data - self.mean) / self.std  # z-score normalización
 
     def inverse_transform(self, data):
         """Desnormaliza: x * std + mean"""
-        return (data * self.std) + self.mean
+        return (data * self.std) + self.mean  # Revertir normalización
 
 
 def visual(true, preds=None, name='./pic/test.pdf'):
@@ -133,12 +137,14 @@ def visual(true, preds=None, name='./pic/test.pdf'):
     preds: Serie predicha (opcional)
     name: Ruta de guardado
     """
-    plt.figure()
+    plt.figure()  # Crear nueva figura
     if preds is not None:
+        # Graficar predicción si se proporciona
         plt.plot(preds, label='Prediction', linewidth=2)
+    # Graficar serie real (siempre)
     plt.plot(true, label='GroundTruth', linewidth=2)
-    plt.legend()
-    plt.savefig(name, bbox_inches='tight')
+    plt.legend()  # Añadir leyenda
+    plt.savefig(name, bbox_inches='tight')  # Guardar sin whitespace extra
 
 
 def adjustment(gt, pred):
@@ -147,32 +153,34 @@ def adjustment(gt, pred):
     Si se detecta una anomalía correctamente, extiende la detección
     a todo el segmento anómalo continuo.
     """
-    anomaly_state = False
+    anomaly_state = False  # Flag para trackear si estamos en segmento anómalo
     for i in range(len(gt)):
         if gt[i] == 1 and pred[i] == 1 and not anomaly_state:
-            # Detectado inicio de anomalía
+            # Detectado inicio de anomalía: primera detección correcta
             anomaly_state = True
-            # Propagar hacia atrás
+            # Propagar hacia atrás: marcar todo el segmento anómalo previo
             for j in range(i, 0, -1):
-                if gt[j] == 0:
+                if gt[j] == 0:  # Fin del segmento anómalo
                     break
                 else:
-                    if pred[j] == 0:
+                    if pred[j] == 0:  # Marcar como detectado
                         pred[j] = 1
-            # Propagar hacia adelante
+            # Propagar hacia adelante: marcar resto del segmento anómalo
             for j in range(i, len(gt)):
-                if gt[j] == 0:
+                if gt[j] == 0:  # Fin del segmento anómalo
                     break
                 else:
-                    if pred[j] == 0:
+                    if pred[j] == 0:  # Marcar como detectado
                         pred[j] = 1
         elif gt[i] == 0:
+            # Salimos del segmento anómalo: resetear flag
             anomaly_state = False
         if anomaly_state:
+            # Dentro de segmento anómalo: asegurar marcado
             pred[i] = 1
     return gt, pred
 
 
 def cal_accuracy(y_pred, y_true):
     """Accuracy: proporción de predicciones correctas."""
-    return np.mean(y_pred == y_true)
+    return np.mean(y_pred == y_true)  # Promedio de aciertos (True=1, False=0)
