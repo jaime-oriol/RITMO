@@ -132,7 +132,7 @@ class Exp_Plan_A(Exp_Basic):
             if not os.path.exists(cache_path):
                 raise FileNotFoundError(f"Cache HMM no encontrado: {cache_path}. Ejecutar primero entrenamiento HMM.")
 
-            hmm_params = torch.load(cache_path)
+            hmm_params = torch.load(cache_path, weights_only=True)
             self.embedder = EmbeddingGenerator(
                 hmm_params=hmm_params,
                 d_model=d_model,
@@ -479,7 +479,7 @@ class Exp_Plan_A(Exp_Basic):
 
         # Cargar mejor modelo
         best_model_path = path + '/' + 'checkpoint.pth'
-        self.model.load_state_dict(torch.load(best_model_path))
+        self.model.load_state_dict(torch.load(best_model_path, weights_only=True))
 
         return self.model
 
@@ -494,7 +494,7 @@ class Exp_Plan_A(Exp_Basic):
         test_data, test_loader = self._get_data(flag='test')
         if test:
             print('loading model')
-            self.model.load_state_dict(torch.load(os.path.join('./checkpoints/' + setting, 'checkpoint.pth')))
+            self.model.load_state_dict(torch.load(os.path.join('./checkpoints/' + setting, 'checkpoint.pth'), weights_only=True))
 
         preds = []
         trues = []
