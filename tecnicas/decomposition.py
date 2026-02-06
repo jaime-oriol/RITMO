@@ -5,8 +5,11 @@ Implementación PURA extraída de DLinear/TimeMixer (Zeng et al., 2023; Wang et 
 Reutiliza series_decomp de layers/Autoformer_EncDec.py sin capas neuronales.
 
 Referencias:
-    - Zeng et al. (2023): Are Transformers Effective for Time Series Forecasting? (DLinear)
-    - Wu et al. (2021): Autoformer (serie_decomp original)
+    - Wu et al. (2021): Autoformer: Decomposition Transformers with Auto-Correlation
+      for Long-Term Series Forecasting, NeurIPS 2021. (series_decomp original)
+    - Zeng et al. (2023): Are Transformers Effective for Time Series Forecasting?, AAAI 2023. (DLinear)
+    - Wang et al. (2024): TimeMixer: Decomposable Multiscale Mixing for Time Series Forecasting,
+      ICLR 2024. (reutiliza series_decomp)
     - Implementación original: layers/Autoformer_EncDec.py, líneas 21-54
 """
 

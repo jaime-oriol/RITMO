@@ -88,8 +88,8 @@ def foundation_tokenize(series: np.ndarray,
     num_patches = patches.shape[0]
 
     # Paso 2: Masking aleatorio
-    if random_seed is not None:
-        np.random.seed(random_seed)
+    # Usar RandomState local para no modificar el estado global del RNG
+    rng = np.random.RandomState(random_seed)
 
     # Calcular número de patches a enmascarar
     num_masked = int(np.round(num_patches * mask_ratio))
@@ -97,7 +97,7 @@ def foundation_tokenize(series: np.ndarray,
 
     # Generar máscara aleatoria
     # mask[i] = True si patch i está enmascarado
-    mask_indices = np.random.choice(num_patches, size=num_masked, replace=False)
+    mask_indices = rng.choice(num_patches, size=num_masked, replace=False)
     mask = np.zeros(num_patches, dtype=bool)
     mask[mask_indices] = True
 
