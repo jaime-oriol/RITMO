@@ -21,7 +21,6 @@ Referencias:
 
 import torch  # Framework de deep learning
 import torch.nn as nn  # Módulo de redes neuronales
-import torch.nn.functional as F  # Funciones de activación
 import math  # Operaciones matemáticas
 
 

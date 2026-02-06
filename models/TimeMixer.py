@@ -577,4 +577,4 @@ class Model(nn.Module):
             dec_out = self.classification(x_enc, x_mark_enc)
             return dec_out  # [B, N]
         else:
-            raise ValueError('Other tasks implemented yet')
+            raise ValueError('Other tasks not implemented yet')
