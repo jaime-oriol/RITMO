@@ -159,7 +159,9 @@ if __name__ == '__main__':
 
     # Plan A
     parser.add_argument('--technique', type=str, default='hmm',
-                        help='Tokenization technique for Plan A, options:[discretization, text_based, patching, decomposition, foundation, hmm]')
+                        help='Tokenization technique for Plan A, options:[discretization, text_based, patching, decomposition, foundation, hmm, hmm_soft]')
+    parser.add_argument('--hmm_k', type=int, default=5,
+                        help='Number of HMM states (K) for hmm/hmm_soft techniques')
 
     args = parser.parse_args()
     if torch.cuda.is_available() and args.use_gpu:

@@ -1,0 +1,4 @@
+plan_a_ETTh1_96_96_TransformerCommon_ETTh1_ftS_sl96_ll48_pl96_dm256_nh4_el3_dl1_df512_expand2_dc4_fc1_ebtimeF_dtTrue_Plan_A_hmm_soft_0  
+Technique: hmm_soft
+mse:0.05885165557265282, mae:0.1875009387731552
+
