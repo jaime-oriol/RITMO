@@ -9,7 +9,7 @@ Convierte cada estado (0, 1, 2...) en un vector con información útil:
 import torch  # Framework de deep learning
 import torch.nn as nn  # Módulo de redes neuronales
 import numpy as np  # Operaciones matemáticas
-from typing import Dict, Tuple  # Para indicar tipos de datos
+from typing import Dict  # Para indicar tipos de datos
 
 
 class EmbeddingGenerator(nn.Module):
@@ -35,7 +35,7 @@ class EmbeddingGenerator(nn.Module):
                  d_model: int = 128,
                  device: str = 'cpu'):
         """Inicializa el generador de embeddings."""
-        super(EmbeddingGenerator, self).__init__()
+        super().__init__()
 
         # Verificar que tenemos todos los parámetros necesarios
         required_keys = {'A', 'mu', 'sigma'}
@@ -141,7 +141,7 @@ class EmbeddingGenerator(nn.Module):
             raise ValueError(f"state debe estar en [0, {self.K-1}]")
 
         # Extraer embedding del estado
-        emb = self.embedding_table[state].numpy()
+        emb = self.embedding_table[state].cpu().numpy()
 
         # Desempaquetar componentes
         return {

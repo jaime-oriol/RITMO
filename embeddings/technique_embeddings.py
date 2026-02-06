@@ -167,11 +167,6 @@ class TextBasedEmbedding(nn.Module):
         self.char_embedding = nn.Embedding(self.vocab_size, d_model)
         nn.init.xavier_uniform_(self.char_embedding.weight)
 
-        # Query para attention pooling (forma avanzada de promediar)
-        # Por ahora usamos promedio simple, esto es para extensibilidad
-        self.query = nn.Parameter(torch.randn(1, d_model))
-        self.scale = d_model ** -0.5
-
     def _tokenize_string(self, text: str) -> torch.Tensor:
         """
         Convierte un string a tensor de índices.
@@ -464,7 +459,7 @@ class FoundationEmbedding(nn.Module):
         # LAYER NORM
         self.norm = nn.LayerNorm(d_model)
 
-    def forward(self, patches: torch.Tensor, mask: torch.Tensor = None) -> torch.Tensor:
+    def forward(self, patches: torch.Tensor, mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         """
         Genera embeddings aplicando masking si se proporciona.
 
