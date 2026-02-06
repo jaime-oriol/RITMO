@@ -2,8 +2,11 @@
 RevIN (Reversible Instance Normalization) para RITMO.
 
 Implementa normalización robusta para series temporales univariadas
-siguiendo Kim et al. 2022. Normaliza sobre la dimensión temporal
+siguiendo Kim et al. (2022). Normaliza sobre la dimensión temporal
 por instancia, permitiendo desnormalización exacta.
+
+Ref: Kim et al. (2022): Reversible Instance Normalization for Accurate
+     Time-Series Forecasting against Distribution Shift, ICLR 2022.
 """
 
 import numpy as np
@@ -100,7 +103,7 @@ class RevINNormalizer:
         denorm_tensor = self._normalizers[split](data_tensor, mode='denorm')
 
         # Convertir a numpy
-        return denorm_tensor.squeeze().detach().numpy()
+        return denorm_tensor.squeeze().detach().cpu().numpy()
 
     def get_statistics(self, split: str = 'train') -> Dict[str, float]:
         """
@@ -168,7 +171,7 @@ class RevINNormalizer:
         self._normalizers[split] = normalizer
 
         # Convertir a numpy
-        return norm_tensor.squeeze().detach().numpy()
+        return norm_tensor.squeeze().detach().cpu().numpy()
 
     def _to_tensor(self, data: np.ndarray) -> torch.Tensor:
         """Convierte numpy array a tensor [1, T, C]."""
