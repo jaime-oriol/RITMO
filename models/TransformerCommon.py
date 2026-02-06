@@ -128,7 +128,7 @@ class TransformerEncoderLayer(nn.Module):
         # Verificar que d_model es divisible por n_heads
         assert d_model % n_heads == 0, f"d_model={d_model} debe ser divisible por n_heads={n_heads}"
 
-        # === MULTI-HEAD SELF-ATTENTION ===
+        # Multi-head self-attention
         self.self_attn = nn.MultiheadAttention(
             embed_dim=d_model,
             num_heads=n_heads,
@@ -136,7 +136,7 @@ class TransformerEncoderLayer(nn.Module):
             batch_first=True  # Formato [batch, seq, feature] (más intuitivo)
         )
 
-        # === FEED-FORWARD NETWORK ===
+        # Feed-forward network
         # Dos capas lineales con GELU en medio
         # GELU (Gaussian Error Linear Unit) funciona mejor que ReLU para series temporales
         self.ff = nn.Sequential(
@@ -146,12 +146,12 @@ class TransformerEncoderLayer(nn.Module):
             nn.Linear(d_ff, d_model)    # Contraer: 512 → 128
         )
 
-        # === LAYER NORMALIZATIONS (Pre-Norm) ===
+        # Layer normalizations (Pre-Norm)
         # Una antes de attention, otra antes de FFN
         self.norm1 = nn.LayerNorm(d_model)
         self.norm2 = nn.LayerNorm(d_model)
 
-        # === DROPOUT para conexiones residuales ===
+        # Dropout para conexiones residuales
         self.dropout1 = nn.Dropout(dropout)
         self.dropout2 = nn.Dropout(dropout)
 
@@ -171,7 +171,7 @@ class TransformerEncoderLayer(nn.Module):
         Returns:
             Salida procesada [batch, seq_len, d_model]
         """
-        # === 1. MULTI-HEAD SELF-ATTENTION ===
+        # 1. Multi-head self-attention
         # Pre-norm: normalizar ANTES de la operación
         x_norm = self.norm1(x)
 
@@ -188,7 +188,7 @@ class TransformerEncoderLayer(nn.Module):
         # Conexión residual: sumar entrada original (ayuda a flujo de gradientes)
         x = x + self.dropout1(attn_output)
 
-        # === 2. FEED-FORWARD NETWORK ===
+        # 2. Feed-forward network
         # Pre-norm: normalizar ANTES de la operación
         x_norm = self.norm2(x)
 
@@ -240,7 +240,7 @@ class Model(nn.Module):
         """
         super().__init__()
 
-        # === GUARDAR CONFIGURACIÓN ===
+        # Guardar configuracion
         self.seq_len = configs.seq_len  # Longitud entrada (varía por técnica)
         self.pred_len = configs.pred_len  # Horizonte predicción
         self.d_model = getattr(configs, 'd_model', 128)  # Dimensión embeddings
@@ -249,7 +249,7 @@ class Model(nn.Module):
         self.d_ff = getattr(configs, 'd_ff', 256)  # Dimensión FFN
         self.dropout = getattr(configs, 'dropout', 0.1)  # Dropout
 
-        # === POSITIONAL ENCODING ===
+        # Positional encoding
         # Añade información de orden temporal a los embeddings
         self.pos_encoder = PositionalEncoding(
             d_model=self.d_model,
@@ -257,7 +257,7 @@ class Model(nn.Module):
             dropout=self.dropout
         )
 
-        # === ENCODER LAYERS ===
+        # Encoder layers
         # Apilar e_layers capas de transformer
         self.encoder_layers = nn.ModuleList([
             TransformerEncoderLayer(
@@ -269,21 +269,21 @@ class Model(nn.Module):
             for _ in range(self.e_layers)
         ])
 
-        # === NORMALIZATION FINAL ===
+        # Normalization final
         # Normalizar salida del encoder antes de projection
         self.norm = nn.LayerNorm(self.d_model)
 
-        # === ADAPTIVE POOLING ===
+        # Adaptive pooling
         # Maneja diferentes longitudes de secuencia producidas por técnicas diferentes
         # Ejemplo: Discretización produce T=5000 tokens, Patching produce T=312 patches
         # Adaptive pooling las unifica a longitud fija antes de projection
         self.adaptive_pool = nn.AdaptiveAvgPool1d(self.pred_len)
 
-        # === PROJECTION HEAD ===
+        # Projection head
         # Proyecta de d_model a la dimensión de salida (número de variables)
         self.projection = nn.Linear(self.d_model, configs.enc_in)
 
-        # === INICIALIZACIÓN DE PESOS ===
+        # Inicializacion de pesos
         # Xavier initialization para mejor convergencia
         self._init_weights()
 
@@ -329,22 +329,22 @@ class Model(nn.Module):
             Predicción normalizada [batch, pred_len, enc_in]
             (debe desnormalizarse externamente con RevIN en exp_plan_a.py)
         """
-        # === 1. POSITIONAL ENCODING ===
+        # 1. Positional encoding
         # Añadir información de posición a los embeddings
         # x_enc ya viene de datos normalizados (RevIN aplicado externamente)
         # x_enc: [batch, seq_len, d_model] → [batch, seq_len, d_model]
         x = self.pos_encoder(x_enc)
 
-        # === 2. ENCODER LAYERS ===
+        # 2. Encoder layers
         # Pasar secuencia por todas las capas del encoder
         for encoder_layer in self.encoder_layers:
             x = encoder_layer(x)  # [batch, seq_len, d_model] → [batch, seq_len, d_model]
 
-        # === 3. NORMALIZATION FINAL ===
+        # 3. Normalization final
         # Normalizar salida del encoder
         x = self.norm(x)  # [batch, seq_len, d_model]
 
-        # === 4. ADAPTIVE POOLING ===
+        # 4. Adaptive pooling
         # Reducir/expandir longitud de secuencia a pred_len
         # Diferentes técnicas producen diferentes seq_len:
         #   - Discretización: seq_len = 5000
@@ -360,7 +360,7 @@ class Model(nn.Module):
         # Transponer de vuelta: [batch, d_model, pred_len] → [batch, pred_len, d_model]
         x = x.transpose(1, 2)
 
-        # === 5. PROJECTION HEAD ===
+        # 5. Projection head
         # Proyectar de d_model a número de variables de salida
         # [batch, pred_len, d_model] → [batch, pred_len, enc_in]
         x = self.projection(x)

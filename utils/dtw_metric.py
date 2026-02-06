@@ -177,7 +177,7 @@ def _traceback(D):
     return array(p), array(q)
 
 
-# === Código de prueba ===
+# Codigo de prueba
 if __name__ == '__main__':
     w = inf
     s = 1.0

@@ -516,9 +516,7 @@ class FoundationEmbedding(nn.Module):
         return self.forward(patches_tensor, mask_tensor)
 
 
-# =============================================================================
-# DICCIONARIO PARA ACCESO POR NOMBRE DE TÉCNICA
-# =============================================================================
+# Diccionario para acceso por nombre de tecnica
 # Permite obtener la clase de embedding usando el nombre de la TÉCNICA.
 # Los nombres corresponden a las 5 técnicas del anteproyecto, NO a modelos específicos.
 

@@ -10,7 +10,7 @@ from scipy.special import logsumexp  # Suma de exponenciales estable numéricame
 from sklearn.cluster import KMeans  # Algoritmo de clustering para inicialización
 from typing import Tuple  # Para indicar tipos de retorno múltiples
 
-# === CONSTANTES DE SEGURIDAD ===
+# Constantes de seguridad
 EPS = 1e-5  # Número pequeño para evitar dividir por cero en denominadores
 LOG_EPS = 1e-10  # Número pequeño para evitar log(0) = -infinito
 LOG_ZERO = -1e10  # Representa log(0) sin causar errores

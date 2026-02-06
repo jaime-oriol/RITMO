@@ -47,7 +47,7 @@ def baum_welch(observations: np.ndarray,
         'converged': True si terminó porque ya no mejoraba
         'n_iter': Cuántas iteraciones hizo
     """
-    # ========== 1. VERIFICAR ENTRADAS ==========
+    # 1. Verificar entradas
     # Comprobar que los parámetros tienen sentido
     if K < 2:
         raise ValueError(f"K debe ser >= 2, recibido: {K}")
@@ -62,7 +62,7 @@ def baum_welch(observations: np.ndarray,
 
     T = len(observations)  # Longitud de la serie temporal
 
-    # ========== 2. INICIALIZACIÓN CON K-MEANS ==========
+    # 2. Inicializacion con k-means
     # Crear parámetros iniciales agrupando datos con k-means
     A, pi, mu, sigma = initialize_kmeans(observations, K, random_state)
 
@@ -71,20 +71,20 @@ def baum_welch(observations: np.ndarray,
     log_likelihoods = []  # Guardamos historial para ver convergencia
     converged = False  # Aún no ha convergido
 
-    # ========== 3. BUCLE PRINCIPAL EM ==========
+    # 3. Bucle principal EM
     # Preparar iterador (con o sin barra de progreso)
     iterator = range(max_iter)
     if verbose:
         iterator = tqdm(iterator, desc="Baum-Welch EM")
 
     for iteration in iterator:
-        # ===== PASO E (Expectation): Estimar estados =====
+        # Paso E (Expectation): estimar estados
         # gamma[t,k] = probabilidad de estar en estado k en tiempo t
         # xi[t,k,l] = probabilidad de transición k→l en tiempo t
         gamma, xi, log_likelihood = forward_backward(observations, A, pi, mu, sigma)
         log_likelihoods.append(log_likelihood)  # Guardar para historial
 
-        # ===== PASO M (Maximization): Actualizar parámetros =====
+        # Paso M (Maximization): actualizar parametros
 
         # Actualizar pi: probabilidad inicial = prob del primer estado
         pi = gamma[0, :]
@@ -108,7 +108,7 @@ def baum_welch(observations: np.ndarray,
         sigma = np.sqrt(numerator_sigma / (denominator_mu + EPS))
         sigma = np.maximum(sigma, EPS)  # Evitar sigma=0
 
-        # ===== VERIFICAR CONVERGENCIA =====
+        # Verificar convergencia
         # Monotonicidad: EM garantiza que LL no decrece (Dempster 1977)
         if iteration > 0 and log_likelihood < log_likelihood_prev - 1e-6:
             if verbose:
@@ -143,7 +143,7 @@ def baum_welch(observations: np.ndarray,
         print(f"  Log-likelihood final: {log_likelihood:.4f}")
         print(f"  ΔLL final: {delta_ll:.2e} (umbral: {epsilon:.2e})")
 
-    # ========== 4. DEVOLVER RESULTADOS ==========
+    # 4. Devolver resultados
     # Empaquetar todos los parámetros entrenados en un diccionario
     return {
         'A': A,                          # Matriz de transición aprendida

@@ -20,13 +20,13 @@ def print_args(args):
     Args:
         args: Namespace con todos los argumentos del experimento
     """
-    # === Configuración básica ===
+    # Configuracion basica
     print("\033[1m" + "Basic Config" + "\033[0m")  # Negrita ANSI
     print(f'  {"Task Name:":<20}{args.task_name:<20}{"Is Training:":<20}{args.is_training:<20}')
     print(f'  {"Model ID:":<20}{args.model_id:<20}{"Model:":<20}{args.model:<20}')
     print()
 
-    # === Data Loader ===
+    # Data Loader
     print("\033[1m" + "Data Loader" + "\033[0m")
     print(f'  {"Data:":<20}{args.data:<20}{"Root Path:":<20}{args.root_path:<20}')
     print(f'  {"Data Path:":<20}{args.data_path:<20}{"Features:":<20}{args.features:<20}')
@@ -34,7 +34,7 @@ def print_args(args):
     print(f'  {"Checkpoints:":<20}{args.checkpoints:<20}')
     print()
 
-    # === Parámetros específicos de tarea ===
+    # Parametros especificos de tarea
     if args.task_name in ['long_term_forecast', 'short_term_forecast']:
         print("\033[1m" + "Forecasting Task" + "\033[0m")
         print(f'  {"Seq Len:":<20}{args.seq_len:<20}{"Label Len:":<20}{args.label_len:<20}')
@@ -52,7 +52,7 @@ def print_args(args):
         print(f'  {"Anomaly Ratio:":<20}{args.anomaly_ratio:<20}')
         print()
 
-    # === Parámetros del modelo ===
+    # Parametros del modelo
     print("\033[1m" + "Model Parameters" + "\033[0m")
     print(f'  {"Top k:":<20}{args.top_k:<20}{"Num Kernels:":<20}{args.num_kernels:<20}')
     print(f'  {"Enc In:":<20}{args.enc_in:<20}{"Dec In:":<20}{args.dec_in:<20}')
@@ -64,7 +64,7 @@ def print_args(args):
     print(f'  {"Embed:":<20}{args.embed:<20}{"Activation:":<20}{args.activation:<20}')
     print()
 
-    # === Parámetros de entrenamiento ===
+    # Parametros de entrenamiento
     print("\033[1m" + "Run Parameters" + "\033[0m")
     print(f'  {"Num Workers:":<20}{args.num_workers:<20}{"Itr:":<20}{args.itr:<20}')
     print(f'  {"Train Epochs:":<20}{args.train_epochs:<20}{"Batch Size:":<20}{args.batch_size:<20}')
@@ -73,13 +73,13 @@ def print_args(args):
     print(f'  {"Lradj:":<20}{args.lradj:<20}{"Use Amp:":<20}{args.use_amp:<20}')
     print()
 
-    # === Configuración GPU ===
+    # Configuracion GPU
     print("\033[1m" + "GPU" + "\033[0m")
     print(f'  {"Use GPU:":<20}{args.use_gpu:<20}{"GPU:":<20}{args.gpu:<20}')
     print(f'  {"Use Multi GPU:":<20}{args.use_multi_gpu:<20}{"Devices:":<20}{args.devices:<20}')
     print()
 
-    # === De-stationary Projector (non-stationary transformer) ===
+    # De-stationary Projector (non-stationary transformer)
     print("\033[1m" + "De-stationary Projector Params" + "\033[0m")
     p_hidden_dims_str = ', '.join(map(str, args.p_hidden_dims))
     print(f'  {"P Hidden Dims:":<20}{p_hidden_dims_str:<20}{"P Hidden Layers:":<20}{args.p_hidden_layers:<20}')
