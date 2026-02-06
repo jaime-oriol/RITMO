@@ -7,11 +7,12 @@ Referencias:
     - Chiarot & Silvestri 2022: Time Series Compression Survey (ACM)
     - Uzan et al. 2024: Greed is All You Need (ACL)
     - CAMEO 2025: ACF/PACF retention para dependencias temporales
+    - Levenshtein 1966: Edit distance para secuencias discretas
 """
 
 import numpy as np  # Operaciones matemáticas con arrays
 from scipy import stats  # Para calcular entropía
-from typing import Dict, Any  # Anotaciones de tipos
+from typing import Dict, Any, Callable, List  # Anotaciones de tipos
 
 
 def compression_ratio(T_original: int, num_tokens: int) -> float:
@@ -294,6 +295,191 @@ def top_k_coverage(tokens: np.ndarray, k: int = 5) -> float:
     coverage = top_k_counts.sum() / counts.sum()
 
     return float(coverage)
+
+
+def perturbation_stability(series: np.ndarray,
+                           tokenize_and_reconstruct: Callable[[np.ndarray], np.ndarray],
+                           noise_levels: List[float] = [0.1, 0.5],
+                           n_reps: int = 3,
+                           random_seed: int = 42) -> Dict[str, Any]:
+    """
+    Estabilidad ante perturbaciones gaussianas (versión ligera).
+
+    Añade ruido gaussiano a la serie, re-tokeniza y mide cuánto cambian
+    MSE de reconstrucción y ACF retention respecto a la versión sin ruido.
+
+    Protocolo:
+        - 2 niveles de ruido (bajo=0.1*std, medio=0.5*std)
+        - 3 repeticiones por nivel
+        - Reportar cambio relativo vs baseline sin ruido
+
+    Args:
+        series: Serie temporal normalizada [T]
+        tokenize_and_reconstruct: Callback que tokeniza y reconstruye.
+            Recibe np.ndarray [T], devuelve np.ndarray [T].
+            Ejemplo para SAX:
+                lambda s: decode_sax(sax_discretize(s)['tokens'],
+                                     sax_discretize(s)['breakpoints'])
+        noise_levels: Niveles de ruido como fracción de std (default: [0.1, 0.5])
+        n_reps: Repeticiones por nivel (default: 3)
+        random_seed: Semilla para reproducibilidad (default: 42)
+
+    Returns:
+        Diccionario con:
+            'baseline_mse': MSE sin ruido
+            'baseline_acf': ACF retention sin ruido
+            'by_level': dict por nivel con media de cambio relativo en MSE y ACF
+            'summary': cambio relativo medio global
+    """
+    rng = np.random.RandomState(random_seed)
+    std = series.std()
+    if std == 0:
+        std = 1.0
+
+    # Baseline sin ruido
+    recon_clean = tokenize_and_reconstruct(series)
+    baseline_mse = mse_reconstruction(series, recon_clean)
+    baseline_acf = acf_retention(series, recon_clean)
+
+    by_level = {}
+    for level in noise_levels:
+        mse_changes = []
+        acf_changes = []
+
+        for _ in range(n_reps):
+            noisy = series + rng.normal(0, level * std, len(series))
+            recon_noisy = tokenize_and_reconstruct(noisy)
+
+            noisy_mse = mse_reconstruction(noisy, recon_noisy)
+            noisy_acf = acf_retention(noisy, recon_noisy)
+
+            # Cambio relativo: (perturbado - baseline) / baseline
+            if baseline_mse > 0:
+                mse_changes.append((noisy_mse - baseline_mse) / baseline_mse)
+            else:
+                mse_changes.append(noisy_mse)
+
+            if baseline_acf > 0:
+                acf_changes.append((noisy_acf - baseline_acf) / baseline_acf)
+            else:
+                acf_changes.append(noisy_acf)
+
+        by_level[level] = {
+            'mse_change_rel': float(np.mean(mse_changes)),
+            'acf_change_rel': float(np.mean(acf_changes)),
+            'mse_change_std': float(np.std(mse_changes)),
+            'acf_change_std': float(np.std(acf_changes)),
+        }
+
+    # Resumen global
+    all_mse = [by_level[l]['mse_change_rel'] for l in noise_levels]
+    all_acf = [by_level[l]['acf_change_rel'] for l in noise_levels]
+
+    return {
+        'baseline_mse': float(baseline_mse),
+        'baseline_acf': float(baseline_acf),
+        'by_level': by_level,
+        'summary': {
+            'avg_mse_change_rel': float(np.mean(all_mse)),
+            'avg_acf_change_rel': float(np.mean(all_acf)),
+        }
+    }
+
+
+def edit_distance_normalized(tokens_a: np.ndarray, tokens_b: np.ndarray) -> float:
+    """
+    Distancia de edición normalizada entre dos secuencias de tokens discretos.
+
+    Mide cuántas operaciones (inserción, eliminación, sustitución) se necesitan
+    para transformar una secuencia en otra, normalizado por la longitud máxima.
+
+    Comparación intra-técnica: tokens de serie original vs perturbada.
+
+    Args:
+        tokens_a: Secuencia de tokens discretos [T1]
+        tokens_b: Secuencia de tokens discretos [T2]
+
+    Returns:
+        Distancia normalizada [0, 1]:
+        - 0.0 = secuencias idénticas
+        - 1.0 = completamente diferentes
+
+    Ejemplo:
+        >>> a = np.array([0, 1, 2, 3, 4])
+        >>> b = np.array([0, 1, 3, 3, 4])
+        >>> edit_distance_normalized(a, b)
+        0.2  # 1 sustitución / 5
+    """
+    n, m = len(tokens_a), len(tokens_b)
+    if n == 0 and m == 0:
+        return 0.0
+    if n == 0 or m == 0:
+        return 1.0
+
+    # Levenshtein con DP optimizado en memoria (2 filas)
+    prev = np.arange(m + 1, dtype=int)
+    curr = np.zeros(m + 1, dtype=int)
+
+    for i in range(1, n + 1):
+        curr[0] = i
+        for j in range(1, m + 1):
+            cost = 0 if tokens_a[i - 1] == tokens_b[j - 1] else 1
+            curr[j] = min(
+                prev[j] + 1,      # Eliminación
+                curr[j - 1] + 1,  # Inserción
+                prev[j - 1] + cost  # Sustitución
+            )
+        prev, curr = curr, prev
+
+    return float(prev[m]) / max(n, m)
+
+
+def token_distance_continuous(tokens_a: np.ndarray,
+                              tokens_b: np.ndarray,
+                              metric: str = 'l2') -> float:
+    """
+    Distancia media entre dos secuencias de tokens continuos alineados.
+
+    Comparación intra-técnica: tokens de serie original vs perturbada.
+    Requiere misma longitud y alineación.
+
+    Args:
+        tokens_a: Tokens continuos [N, D] o [N] (patches, componentes, etc.)
+        tokens_b: Tokens continuos [N, D] o [N] (misma shape que tokens_a)
+        metric: 'l2' (distancia euclidiana) o 'cosine' (distancia coseno)
+
+    Returns:
+        Distancia media entre pares de tokens:
+        - 0.0 = tokens idénticos
+        - Mayor valor = más diferentes
+
+    Ejemplo:
+        >>> a = np.array([[1, 2], [3, 4]])  # 2 patches de dim 2
+        >>> b = np.array([[1, 2], [3, 5]])  # Segundo patch ligeramente diferente
+        >>> token_distance_continuous(a, b, metric='l2')
+        0.5  # media de [0.0, 1.0]
+    """
+    a = tokens_a.reshape(tokens_a.shape[0], -1) if tokens_a.ndim > 1 else tokens_a.reshape(-1, 1)
+    b = tokens_b.reshape(tokens_b.shape[0], -1) if tokens_b.ndim > 1 else tokens_b.reshape(-1, 1)
+
+    n = min(len(a), len(b))
+    a, b = a[:n], b[:n]
+
+    if metric == 'l2':
+        distances = np.sqrt(np.sum((a - b) ** 2, axis=1))
+    elif metric == 'cosine':
+        # cosine distance = 1 - cosine_similarity
+        norm_a = np.linalg.norm(a, axis=1, keepdims=True)
+        norm_b = np.linalg.norm(b, axis=1, keepdims=True)
+        # Evitar división por cero
+        norm_a = np.where(norm_a == 0, 1, norm_a)
+        norm_b = np.where(norm_b == 0, 1, norm_b)
+        cosine_sim = np.sum((a / norm_a) * (b / norm_b), axis=1)
+        distances = 1.0 - cosine_sim
+    else:
+        raise ValueError(f"metric debe ser 'l2' o 'cosine', recibido: {metric}")
+
+    return float(np.mean(distances))
 
 
 def evaluate_tokenization(original: np.ndarray,
