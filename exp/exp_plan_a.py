@@ -14,7 +14,8 @@ Técnicas soportadas:
     - patching: PatchTST (segmentación en patches)
     - decomposition: DLinear/Autoformer (trend + seasonal)
     - foundation: MOMENT (masked patches)
-    - hmm: RITMO (estados ocultos con embeddings estructurados)
+    - hmm: RITMO hard (Viterbi argmax → embedding lookup)
+    - hmm_soft: RITMO soft (gamma posteriors → mezcla ponderada de embeddings)
 """
 
 from data_provider.data_factory import data_provider
@@ -38,7 +39,7 @@ from tecnicas.decomposition import decomposition_tokenize
 from tecnicas.foundation import foundation_tokenize
 
 # Importar HMM para técnica RITMO
-from hmm import viterbi_decode
+from hmm import viterbi_decode, forward_backward
 from embeddings import EmbeddingGenerator
 
 warnings.filterwarnings('ignore')
@@ -65,7 +66,7 @@ class Exp_Plan_A(Exp_Basic):
         super(Exp_Plan_A, self).__init__(args)
 
         # Verificar técnica válida
-        valid_techniques = ['discretization', 'text_based', 'patching', 'decomposition', 'foundation', 'hmm']
+        valid_techniques = ['discretization', 'text_based', 'patching', 'decomposition', 'foundation', 'hmm', 'hmm_soft']
         if not hasattr(args, 'technique') or args.technique not in valid_techniques:
             raise ValueError(f"args.technique debe ser una de: {valid_techniques}")
 
@@ -125,7 +126,7 @@ class Exp_Plan_A(Exp_Basic):
             self.embedder_pos = nn.Parameter(torch.zeros(1, 5000, d_model))  # Max 5000 patches
             self.embedder_mask = nn.Parameter(torch.zeros(1, 1, d_model))  # [MASK] token
 
-        elif self.technique == 'hmm':
+        elif self.technique in ('hmm', 'hmm_soft'):
             # EmbeddingGenerator con parámetros HMM
             # Cache debe estar en ./cache/hmm_{data}_{K}.pth
             cache_path = f'./cache/hmm_{self.args.data.lower()}_K5.pth'
@@ -138,7 +139,7 @@ class Exp_Plan_A(Exp_Basic):
                 d_model=d_model,
                 device=self.device
             )
-            # Guardar parámetros HMM para Viterbi
+            # Guardar parámetros HMM para Viterbi / forward-backward
             self.hmm_params = hmm_params
 
     def _build_model(self):
@@ -180,7 +181,7 @@ class Exp_Plan_A(Exp_Basic):
         elif self.technique == 'foundation':
             params += list(self.embedder_patch.parameters())
             params += [self.embedder_pos, self.embedder_mask]
-        elif self.technique == 'hmm':
+        elif self.technique in ('hmm', 'hmm_soft'):
             # EmbeddingGenerator tiene proyección lineal aprendible
             params += list(self.embedder.projection.parameters())
 
@@ -243,7 +244,7 @@ class Exp_Plan_A(Exp_Basic):
                 tokens_list.append(torch.tensor(patches, dtype=torch.float32))
 
             elif self.technique == 'hmm':
-                # RITMO: Viterbi decoding
+                # RITMO hard: Viterbi decoding (argmax)
                 states, _ = viterbi_decode(
                     observations=serie_norm,
                     pi=self.hmm_params['pi'].cpu().numpy(),
@@ -252,6 +253,17 @@ class Exp_Plan_A(Exp_Basic):
                     sigma=self.hmm_params['sigma'].cpu().numpy()
                 )
                 tokens_list.append(torch.tensor(states, dtype=torch.long))
+
+            elif self.technique == 'hmm_soft':
+                # RITMO soft: gamma posteriors (mezcla ponderada)
+                gamma, _, _ = forward_backward(
+                    observations=serie_norm,
+                    pi=self.hmm_params['pi'].cpu().numpy(),
+                    A=self.hmm_params['A'].cpu().numpy(),
+                    mu=self.hmm_params['mu'].cpu().numpy(),
+                    sigma=self.hmm_params['sigma'].cpu().numpy()
+                )
+                tokens_list.append(torch.tensor(gamma, dtype=torch.float32))
 
         return tokens_list
 
@@ -294,8 +306,12 @@ class Exp_Plan_A(Exp_Basic):
                 embeds = embeds + self.embedder_pos[:, :embeds.shape[0], :]
 
             elif self.technique == 'hmm':
-                # EmbeddingGenerator: [seq_len] → [seq_len, d_model]
+                # EmbeddingGenerator hard: [seq_len] → [seq_len, d_model]
                 embeds = self.embedder(tokens)
+
+            elif self.technique == 'hmm_soft':
+                # EmbeddingGenerator soft: [seq_len, K] → [seq_len, d_model]
+                embeds = self.embedder.forward_soft(tokens)
 
             embeddings_list.append(embeds)
 
