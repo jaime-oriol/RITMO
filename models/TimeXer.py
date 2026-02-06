@@ -59,18 +59,18 @@ class EnEmbedding(nn.Module):
         # Repetir token global para cada muestra del batch
         glb = self.glb_token.repeat((x.shape[0], 1, 1, 1))
 
-        # === PATCHING: dividir serie en segmentos ===
+        # Patching: dividir serie en segmentos
         # unfold: crea patches no solapados de tamaño patch_len
         x = x.unfold(dimension=-1, size=self.patch_len, step=self.patch_len)
         # Reorganizar: [batch*nvars, num_patches, patch_len]
         x = torch.reshape(x, (x.shape[0] * x.shape[1], x.shape[2], x.shape[3]))
 
-        # === EMBEDDING: valor + posición ===
+        # Embedding: valor + posicion
         x = self.value_embedding(x) + self.position_embedding(x)
         # Volver a separar por variable
         x = torch.reshape(x, (-1, n_vars, x.shape[-2], x.shape[-1]))
 
-        # === AÑADIR TOKEN GLOBAL al final ===
+        # Anadir token global al final
         x = torch.cat([x, glb], dim=2)  # Concatenar en dimensión temporal
 
         # Aplanar para el encoder
@@ -142,7 +142,7 @@ class EncoderLayer(nn.Module):
         """
         B, L, D = cross.shape  # B=batch, L=vars exógenas, D=d_model
 
-        # === 1. SELF-ATTENTION: la serie se atiende a sí misma ===
+        # 1. Self-attention: la serie se atiende a si misma
         x = x + self.dropout(self.self_attention(
             x, x, x,  # Query, Key, Value = mismo x
             attn_mask=x_mask,
@@ -150,7 +150,7 @@ class EncoderLayer(nn.Module):
         )[0])
         x = self.norm1(x)
 
-        # === 2. CROSS-ATTENTION: token global atiende a exógenas ===
+        # 2. Cross-attention: token global atiende a exogenas
         # Extraer solo el token global (último token)
         x_glb_ori = x[:, -1, :].unsqueeze(1)  # [batch*nvars, 1, d_model]
         # Reorganizar para cross-attention
@@ -172,7 +172,7 @@ class EncoderLayer(nn.Module):
         # Reemplazar token global actualizado en la secuencia
         y = x = torch.cat([x[:, :-1, :], x_glb], dim=1)
 
-        # === 3. FEEDFORWARD NETWORK ===
+        # 3. Feedforward network
         y = self.dropout(self.activation(self.conv1(y.transpose(-1, 1))))
         y = self.dropout(self.conv2(y).transpose(-1, 1))
 
@@ -212,14 +212,14 @@ class Model(nn.Module):
         # Para MS: solo 1 variable endógena; para M: todas las variables
         self.n_vars = 1 if configs.features == 'MS' else configs.enc_in
 
-        # === EMBEDDINGS ===
+        # Embeddings
         # Embedding endógeno: patches + token global
         self.en_embedding = EnEmbedding(self.n_vars, configs.d_model, self.patch_len, configs.dropout)
         # Embedding exógeno: embedding invertido (timesteps como tokens)
         self.ex_embedding = DataEmbedding_inverted(configs.seq_len, configs.d_model, configs.embed, configs.freq,
                                                    configs.dropout)
 
-        # === ENCODER ===
+        # Encoder
         # Encoder con self-attention y cross-attention
         self.encoder = Encoder(
             [
@@ -244,7 +244,7 @@ class Model(nn.Module):
             norm_layer=torch.nn.LayerNorm(configs.d_model)
         )
 
-        # === CABEZA DE PREDICCIÓN ===
+        # Cabeza de prediccion
         # +1 por el token global
         self.head_nf = configs.d_model * (self.patch_num + 1)
         self.head = FlattenHead(configs.enc_in, self.head_nf, configs.pred_len,
@@ -259,7 +259,7 @@ class Model(nn.Module):
         Salida: [batch, pred_len, 1]
         """
         if self.use_norm:
-            # === NORMALIZACIÓN RevIN ===
+            # Normalizacion RevIN
             means = x_enc.mean(1, keepdim=True).detach()
             x_enc = x_enc - means
             stdev = torch.sqrt(torch.var(x_enc, dim=1, keepdim=True, unbiased=False) + 1e-5)
@@ -267,24 +267,24 @@ class Model(nn.Module):
 
         _, _, N = x_enc.shape  # N = número de variables
 
-        # === SEPARAR ENDÓGENA Y EXÓGENAS ===
+        # Separar endogena y exogenas
         # Última variable (-1) es la endógena (a predecir)
         # Resto (:-1) son exógenas (auxiliares)
         en_embed, n_vars = self.en_embedding(x_enc[:, :, -1].unsqueeze(-1).permute(0, 2, 1))
         ex_embed = self.ex_embedding(x_enc[:, :, :-1], x_mark_enc)
 
-        # === ENCODER: cross-attention entre endógena y exógenas ===
+        # Encoder: cross-attention entre endogena y exogenas
         enc_out = self.encoder(en_embed, ex_embed)
         enc_out = torch.reshape(
             enc_out, (-1, n_vars, enc_out.shape[-2], enc_out.shape[-1]))
         enc_out = enc_out.permute(0, 1, 3, 2)  # [batch, nvars, d_model, patch_num]
 
-        # === CABEZA DE PREDICCIÓN ===
+        # Cabeza de prediccion
         dec_out = self.head(enc_out)  # [batch, nvars, pred_len]
         dec_out = dec_out.permute(0, 2, 1)  # [batch, pred_len, nvars]
 
         if self.use_norm:
-            # === DESNORMALIZACIÓN ===
+            # Desnormalizacion
             # Solo desnormalizar la variable endógena (última)
             dec_out = dec_out * (stdev[:, 0, -1:].unsqueeze(1).repeat(1, self.pred_len, 1))
             dec_out = dec_out + (means[:, 0, -1:].unsqueeze(1).repeat(1, self.pred_len, 1))
@@ -300,7 +300,7 @@ class Model(nn.Module):
         Salida: [batch, pred_len, channels]
         """
         if self.use_norm:
-            # === NORMALIZACIÓN RevIN ===
+            # Normalizacion RevIN
             means = x_enc.mean(1, keepdim=True).detach()
             x_enc = x_enc - means
             stdev = torch.sqrt(torch.var(x_enc, dim=1, keepdim=True, unbiased=False) + 1e-5)
@@ -308,22 +308,22 @@ class Model(nn.Module):
 
         _, _, N = x_enc.shape
 
-        # === TODAS LAS VARIABLES SON ENDÓGENAS ===
+        # Todas las variables son endogenas
         en_embed, n_vars = self.en_embedding(x_enc.permute(0, 2, 1))
         ex_embed = self.ex_embedding(x_enc, x_mark_enc)
 
-        # === ENCODER ===
+        # Encoder
         enc_out = self.encoder(en_embed, ex_embed)
         enc_out = torch.reshape(
             enc_out, (-1, n_vars, enc_out.shape[-2], enc_out.shape[-1]))
         enc_out = enc_out.permute(0, 1, 3, 2)
 
-        # === CABEZA DE PREDICCIÓN ===
+        # Cabeza de prediccion
         dec_out = self.head(enc_out)
         dec_out = dec_out.permute(0, 2, 1)
 
         if self.use_norm:
-            # === DESNORMALIZACIÓN ===
+            # Desnormalizacion
             dec_out = dec_out * (stdev[:, 0, :].unsqueeze(1).repeat(1, self.pred_len, 1))
             dec_out = dec_out + (means[:, 0, :].unsqueeze(1).repeat(1, self.pred_len, 1))
 

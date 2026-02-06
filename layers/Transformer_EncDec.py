@@ -60,7 +60,7 @@ class EncoderLayer(nn.Module):
         x: [B, L, d_model]
         Salida: [B, L, d_model], attention_weights
         """
-        # === 1. SELF-ATTENTION + RESIDUAL ===
+        # 1. Self-attention + residual
         new_x, attn = self.attention(
             x, x, x,  # Q, K, V todos iguales (self-attention)
             attn_mask=attn_mask,
@@ -68,10 +68,10 @@ class EncoderLayer(nn.Module):
         )
         x = x + self.dropout(new_x)  # Conexión residual
 
-        # === 2. LAYER NORM ===
+        # 2. Layer norm
         y = x = self.norm1(x)
 
-        # === 3. FFN + RESIDUAL ===
+        # 3. FFN + residual
         y = self.dropout(self.activation(self.conv1(y.transpose(-1, 1))))
         y = self.dropout(self.conv2(y).transpose(-1, 1))
 
@@ -146,7 +146,7 @@ class DecoderLayer(nn.Module):
         x: entrada del decoder [B, L_dec, d_model]
         cross: salida del encoder [B, L_enc, d_model]
         """
-        # === 1. SELF-ATTENTION (masked) ===
+        # 1. Self-attention (masked)
         x = x + self.dropout(self.self_attention(
             x, x, x,  # Q, K, V del decoder
             attn_mask=x_mask,
@@ -154,14 +154,14 @@ class DecoderLayer(nn.Module):
         )[0])
         x = self.norm1(x)
 
-        # === 2. CROSS-ATTENTION ===
+        # 2. Cross-attention
         x = x + self.dropout(self.cross_attention(
             x, cross, cross,  # Q del decoder, K, V del encoder
             attn_mask=cross_mask,
             tau=tau, delta=delta
         )[0])
 
-        # === 3. FFN ===
+        # 3. FFN
         y = x = self.norm2(x)
         y = self.dropout(self.activation(self.conv1(y.transpose(-1, 1))))
         y = self.dropout(self.conv2(y).transpose(-1, 1))

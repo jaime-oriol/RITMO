@@ -43,7 +43,7 @@ class DSAttention(nn.Module):
         tau = 1.0 if tau is None else tau.unsqueeze(1).unsqueeze(1)
         delta = 0.0 if delta is None else delta.unsqueeze(1).unsqueeze(1)
 
-        # === ATENCIÓN CON FACTORES DE-STATIONARITY ===
+        # Atencion con factores de-stationarity
         # scores = Q·K^T * tau + delta
         scores = torch.einsum("blhe,bshe->bhls", queries, keys) * tau + delta
 
@@ -327,7 +327,7 @@ class TwoStageAttentionLayer(nn.Module):
         """
         batch = x.shape[0]
 
-        # === ETAPA 1: ATENCIÓN TEMPORAL ===
+        # Etapa 1: atencion temporal
         # Reorganizar para atención entre segmentos temporales
         time_in = rearrange(x, 'b ts_d seg_num d_model -> (b ts_d) seg_num d_model')
         time_enc, attn = self.time_attention(time_in, time_in, time_in, attn_mask=None, tau=None, delta=None)
@@ -336,7 +336,7 @@ class TwoStageAttentionLayer(nn.Module):
         dim_in = dim_in + self.dropout(self.MLP1(dim_in))
         dim_in = self.norm2(dim_in)
 
-        # === ETAPA 2: ATENCIÓN DIMENSIONAL ===
+        # Etapa 2: atencion dimensional
         # Reorganizar para atención entre variables
         dim_send = rearrange(dim_in, '(b ts_d) seg_num d_model -> (b seg_num) ts_d d_model', b=batch)
         # Expandir router para el batch

@@ -117,20 +117,20 @@ class Model(nn.Module):
         x_enc: Entrada [batch, seq_len, channels]
         Salida: Predicción [batch, pred_len, channels]
         """
-        # === NORMALIZACIÓN (RevIN-style) ===
+        # Normalizacion (RevIN-style)
         # Restar media y dividir por desviación estándar
         means = x_enc.mean(1, keepdim=True).detach()  # Media por serie
         x_enc = x_enc - means
         stdev = torch.sqrt(torch.var(x_enc, dim=1, keepdim=True, unbiased=False) + 1e-5)
         x_enc /= stdev
 
-        # === PATCHING Y EMBEDDING ===
+        # Patching y embedding
         # Cambiar a [batch, channels, seq_len] para patching
         x_enc = x_enc.permute(0, 2, 1)
         # Crear patches: [batch*channels, num_patches, d_model]
         enc_out, n_vars = self.patch_embedding(x_enc)
 
-        # === ENCODER TRANSFORMER ===
+        # Encoder Transformer
         # Procesar patches con self-attention
         enc_out, attns = self.encoder(enc_out)
         # Reorganizar: [batch, channels, num_patches, d_model]
@@ -138,11 +138,11 @@ class Model(nn.Module):
         # Transponer: [batch, channels, d_model, num_patches]
         enc_out = enc_out.permute(0, 1, 3, 2)
 
-        # === CABEZA DE PREDICCIÓN ===
+        # Cabeza de prediccion
         dec_out = self.head(enc_out)  # [batch, channels, pred_len]
         dec_out = dec_out.permute(0, 2, 1)  # [batch, pred_len, channels]
 
-        # === DESNORMALIZACIÓN ===
+        # Desnormalizacion
         # Revertir la normalización inicial
         dec_out = dec_out * (stdev[:, 0, :].unsqueeze(1).repeat(1, self.pred_len, 1))
         dec_out = dec_out + (means[:, 0, :].unsqueeze(1).repeat(1, self.pred_len, 1))

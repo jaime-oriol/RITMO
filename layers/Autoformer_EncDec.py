@@ -116,19 +116,19 @@ class EncoderLayer(nn.Module):
         self.activation = F.relu if activation == "relu" else F.gelu
 
     def forward(self, x, attn_mask=None):
-        # === 1. SELF-ATTENTION ===
+        # 1. Self-attention
         new_x, attn = self.attention(x, x, x, attn_mask=attn_mask)
         x = x + self.dropout(new_x)  # Conexión residual
 
-        # === 2. PRIMERA DESCOMPOSICIÓN ===
+        # 2. Primera descomposicion
         x, _ = self.decomp1(x)  # Descartar tendencia, quedarse con estacional
 
-        # === 3. FEEDFORWARD NETWORK ===
+        # 3. Feedforward network
         y = x
         y = self.dropout(self.activation(self.conv1(y.transpose(-1, 1))))
         y = self.dropout(self.conv2(y).transpose(-1, 1))
 
-        # === 4. SEGUNDA DESCOMPOSICIÓN ===
+        # 4. Segunda descomposicion
         res, _ = self.decomp2(x + y)  # Descartar tendencia
         return res, attn
 
@@ -197,21 +197,21 @@ class DecoderLayer(nn.Module):
         self.activation = F.relu if activation == "relu" else F.gelu
 
     def forward(self, x, cross, x_mask=None, cross_mask=None):
-        # === 1. SELF-ATTENTION + DESCOMPOSICIÓN ===
+        # 1. Self-attention + descomposicion
         x = x + self.dropout(self.self_attention(x, x, x, attn_mask=x_mask)[0])
         x, trend1 = self.decomp1(x)
 
-        # === 2. CROSS-ATTENTION + DESCOMPOSICIÓN ===
+        # 2. Cross-attention + descomposicion
         x = x + self.dropout(self.cross_attention(x, cross, cross, attn_mask=cross_mask)[0])
         x, trend2 = self.decomp2(x)
 
-        # === 3. FFN + DESCOMPOSICIÓN ===
+        # 3. FFN + descomposicion
         y = x
         y = self.dropout(self.activation(self.conv1(y.transpose(-1, 1))))
         y = self.dropout(self.conv2(y).transpose(-1, 1))
         x, trend3 = self.decomp3(x + y)
 
-        # === 4. ACUMULAR TENDENCIAS ===
+        # 4. Acumular tendencias
         residual_trend = trend1 + trend2 + trend3
         residual_trend = self.projection(residual_trend.permute(0, 2, 1)).transpose(1, 2)
         return x, residual_trend

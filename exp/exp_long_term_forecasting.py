@@ -122,7 +122,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         if self.args.use_amp:
             scaler = torch.cuda.amp.GradScaler()
 
-        # === LOOP DE EPOCHS ===
+        # Loop de epochs
         for epoch in range(self.args.train_epochs):
             iter_count = 0
             train_loss = []

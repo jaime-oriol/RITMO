@@ -353,7 +353,7 @@ class Exp_Plan_A(Exp_Basic):
                 batch_x = batch_x.float().to(self.device)
                 batch_y = batch_y.float().to(self.device)
 
-                # === PIPELINE PLAN A ===
+                # Pipeline Plan A
 
                 # 1. RevIN normalize (sobre datos crudos)
                 batch_x_norm = self.revin(batch_x, mode='norm')
@@ -413,7 +413,7 @@ class Exp_Plan_A(Exp_Basic):
         if self.args.use_amp:
             scaler = torch.cuda.amp.GradScaler()
 
-        # === LOOP DE EPOCHS ===
+        # Loop de epochs
         for epoch in range(self.args.train_epochs):
             iter_count = 0
             train_loss = []
@@ -428,7 +428,7 @@ class Exp_Plan_A(Exp_Basic):
                 batch_x = batch_x.float().to(self.device)
                 batch_y = batch_y.float().to(self.device)
 
-                # === PIPELINE PLAN A ===
+                # Pipeline Plan A
 
                 # 1. RevIN normalize
                 batch_x_norm = self.revin(batch_x, mode='norm')
@@ -524,7 +524,7 @@ class Exp_Plan_A(Exp_Basic):
                 batch_x = batch_x.float().to(self.device)
                 batch_y = batch_y.float().to(self.device)
 
-                # === PIPELINE PLAN A ===
+                # Pipeline Plan A
                 batch_x_norm = self.revin(batch_x, mode='norm')
                 batch_tokens = self._tokenize_batch(batch_x_norm)
                 batch_embeds = self._embed_tokens(batch_tokens)
