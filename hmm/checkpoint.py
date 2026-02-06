@@ -68,7 +68,7 @@ def load_hmm_params(filepath: str) -> Dict[str, np.ndarray]:
         raise FileNotFoundError(f"Archivo no encontrado: {filepath}")
 
     # Cargar desde disco
-    params_loaded = torch.load(filepath)
+    params_loaded = torch.load(filepath, weights_only=True)  # weights_only por seguridad (PyTorch>=2.0)
 
     # Convertir tensores PyTorch de vuelta a arrays numpy
     params = {

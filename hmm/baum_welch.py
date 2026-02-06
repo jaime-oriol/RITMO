@@ -2,6 +2,11 @@
 Algoritmo Baum-Welch (EM) para entrenamiento de HMM.
 Aprende los parámetros óptimos del modelo a partir de los datos.
 EM = Expectation-Maximization: alterna entre estimar estados y actualizar parámetros.
+
+Referencias:
+    - Rabiner (1989), A Tutorial on Hidden Markov Models, IEEE Proc. 77(2), pp. 257-286.
+    - Dempster et al. (1977), Maximum Likelihood from Incomplete Data via the EM Algorithm,
+      JRSS Series B, 39(1), pp. 1-38.
 """
 
 import numpy as np  # Operaciones matemáticas con arrays
@@ -104,6 +109,12 @@ def baum_welch(observations: np.ndarray,
         sigma = np.maximum(sigma, EPS)  # Evitar sigma=0
 
         # ===== VERIFICAR CONVERGENCIA =====
+        # Monotonicidad: EM garantiza que LL no decrece (Dempster 1977)
+        if iteration > 0 and log_likelihood < log_likelihood_prev - 1e-6:
+            if verbose:
+                print(f"  AVISO: LL decreció en iter {iteration+1} "
+                      f"({log_likelihood_prev:.4f} → {log_likelihood:.4f}), posible inestabilidad numérica")
+
         # Si la mejora es menor que epsilon, terminamos
         delta_ll = abs(log_likelihood - log_likelihood_prev)
 

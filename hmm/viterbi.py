@@ -2,11 +2,15 @@
 Algoritmo de Viterbi para decodificación de HMM.
 Encuentra la secuencia de estados MÁS PROBABLE dada una serie de observaciones.
 Es como encontrar el mejor camino a través de los estados ocultos.
+
+Referencia: Rabiner (1989), A Tutorial on Hidden Markov Models, IEEE Proc. 77(2), pp. 257-286.
+    - Ecuaciones 32a-35 (Viterbi recursion + backtracking)
 """
 
 import numpy as np  # Operaciones matemáticas con arrays
 from typing import Tuple  # Para indicar tipos de retorno múltiples
 from .gaussian_emissions import log_gaussian_emission  # Probabilidades de emisión
+from .utils import LOG_EPS  # Constante para log seguro
 
 
 def viterbi_decode(observations: np.ndarray,
@@ -45,8 +49,8 @@ def viterbi_decode(observations: np.ndarray,
     log_B = log_gaussian_emission(observations, mu, sigma)  # [T, K]
 
     # PASO 2: Convertir a escala logarítmica
-    log_A = np.log(A + 1e-10)  # +1e-10 evita log(0)
-    log_pi = np.log(pi + 1e-10)
+    log_A = np.log(A + LOG_EPS)  # +LOG_EPS evita log(0) = -infinito
+    log_pi = np.log(pi + LOG_EPS)  # +LOG_EPS evita log(0) = -infinito
 
     # PASO 3: Crear tablas para programación dinámica
     delta = np.zeros((T, K))  # delta[t,k] = mejor prob de llegar a estado k en tiempo t
