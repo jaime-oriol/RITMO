@@ -83,7 +83,7 @@ class EmbeddingGenerator(nn.Module):
 
     def forward(self, tokens) -> torch.Tensor:
         """
-        Convierte tokens en embeddings.
+        Convierte tokens HARD (Viterbi) en embeddings.
 
         Entrada:
             tokens: Lista de estados [0, 1, 2, ...] de longitud T (numpy array o tensor)
@@ -113,6 +113,28 @@ class EmbeddingGenerator(nn.Module):
         embeddings_projected = self.projection(embeddings_raw)
 
         return embeddings_projected
+
+    def forward_soft(self, gamma: torch.Tensor) -> torch.Tensor:
+        """
+        Convierte posteriors SOFT (gamma) en embeddings via mezcla ponderada.
+        e_t = sum_k gamma_t(k) * e_k  (cada timestep obtiene embedding unico)
+
+        Entrada:
+            gamma: Posteriors [T, K] del forward-backward (cada fila suma ~1)
+
+        Salida:
+            Tensor de embeddings [T, d_model]
+        """
+        if isinstance(gamma, np.ndarray):
+            gamma = torch.from_numpy(gamma).float().to(self.device)
+        else:
+            gamma = gamma.float().to(self.device)
+
+        # Mezcla ponderada: [T, K] @ [K, 2+K] = [T, 2+K]
+        embeddings_raw = gamma @ self.embedding_table
+
+        # Proyectar: [T, 2+K] → [T, d_model]
+        return self.projection(embeddings_raw)
 
     def get_embedding_table(self) -> torch.Tensor:
         """

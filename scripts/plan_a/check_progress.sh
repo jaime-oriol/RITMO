@@ -11,7 +11,6 @@ SEQ_LEN=96
 
 # === FUNCIÓN DE VERIFICACIÓN ===
 check_experiment_completed() {
-check_experiment_completed() {
     local technique=$1
     local dataset=$2
     local pred_len=$3
@@ -29,23 +28,6 @@ check_experiment_completed() {
     fi
 
     return 1
-}
-    local dataset=$2
-    local pred_len=$3
-
-    local result_pattern="./results/plan_a_${dataset}_${SEQ_LEN}_${pred_len}_*"
-
-    if compgen -G "$result_pattern" > /dev/null; then
-        for dir in $result_pattern; do
-            if echo "$dir" | grep -iq "Plan_A.*${technique}"; then
-            if [ -f "$dir/metrics.npy" ]; then
-                return 0  # Completado
-                fi
-            fi
-        done
-    fi
-
-    return 1  # No completado
 }
 
 # === ANÁLISIS DE PROGRESO ===
