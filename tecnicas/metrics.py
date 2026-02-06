@@ -4,13 +4,14 @@ Permiten comparar técnicas de tokenización usando solo los tokens generados.
 No requieren entrenar modelos ni ejecutar forecasting/clasificación.
 
 Referencias:
-    - Chiarot & Silvestri 2022: Time Series Compression Survey (ACM)
-    - Uzan et al. 2024: Greed is All You Need (ACL)
-    - CAMEO 2025: ACF/PACF retention para dependencias temporales
-    - Levenshtein 1966: Edit distance para secuencias discretas
+    - Chiarot & Silvestri (2022): Time Series Compression Survey, ACM Computing Surveys, 55(10).
+    - Uzan et al. (2024): Greed is All You Need, ACL 2024.
+    - Levenshtein (1966): Binary codes capable of correcting deletions, insertions, and reversals,
+      Soviet Physics Doklady, 10(8), pp. 707-710.
 """
 
 import numpy as np  # Operaciones matemáticas con arrays
+from collections import Counter  # Para contar ocurrencias de bigramas
 from scipy import stats  # Para calcular entropía
 from typing import Dict, Any, Callable, List  # Anotaciones de tipos
 
@@ -95,7 +96,7 @@ def acf_retention(original: np.ndarray, reconstructed: np.ndarray, nlags: int = 
         PatchTST con patches non-overlapping: ACF retention ~0.99
         SAX con discretización agresiva: ACF retention ~0.85
 
-    Ref: CAMEO 2025
+    Ref: Métrica estándar de procesamiento de señales (Box & Jenkins, 1976).
     """
     # Ajustar longitudes
     min_len = min(len(original), len(reconstructed))
@@ -196,7 +197,6 @@ def bigram_entropy(tokens: np.ndarray) -> float:
     bigrams = list(zip(tokens[:-1], tokens[1:]))
 
     # Contar ocurrencias de cada bigrama
-    from collections import Counter
     bigram_counts = Counter(bigrams)
 
     # Convertir a probabilidades
