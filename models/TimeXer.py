@@ -10,7 +10,6 @@ import torch.nn as nn  # Módulo de redes neuronales
 import torch.nn.functional as F  # Funciones de activación
 from layers.SelfAttention_Family import FullAttention, AttentionLayer  # Mecanismo de atención
 from layers.Embed import DataEmbedding_inverted, PositionalEmbedding  # Embeddings
-import numpy as np  # Operaciones numéricas
 
 
 class FlattenHead(nn.Module):

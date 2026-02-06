@@ -6,7 +6,6 @@ Paper: https://arxiv.org/pdf/2205.13504.pdf (Zeng et al., 2023)
 
 import torch  # Framework de deep learning
 import torch.nn as nn  # Módulo de redes neuronales
-import torch.nn.functional as F  # Funciones de activación
 from layers.Autoformer_EncDec import series_decomp  # Descomposición tendencia/estacionalidad
 
 
