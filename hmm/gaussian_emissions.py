@@ -2,6 +2,8 @@
 Emisiones gaussianas para HMM.
 Calcula qué tan probable es que cada estado genere cada observación.
 Usa distribución gaussiana (campana de Gauss) para modelar las emisiones.
+
+Referencia: Rabiner (1989), A Tutorial on Hidden Markov Models, IEEE Proc. 77(2), pp. 257-286.
 """
 
 import numpy as np  # Librería para operaciones matemáticas

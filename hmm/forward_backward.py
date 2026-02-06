@@ -2,13 +2,19 @@
 Algoritmo Forward-Backward para HMM.
 Calcula la probabilidad de estar en cada estado en cada momento del tiempo.
 Es el paso E (Expectation) del algoritmo de entrenamiento.
+
+Referencia: Rabiner (1989), A Tutorial on Hidden Markov Models, IEEE Proc. 77(2), pp. 257-286.
+    - Forward: ecuaciones 19-20
+    - Backward: ecuaciones 24-25
+    - Gamma: ecuación 27
+    - Xi: ecuación 37
 """
 
 import numpy as np  # Operaciones matemáticas con arrays
 from scipy.special import logsumexp  # Suma de exponenciales estable
 from typing import Tuple  # Para indicar tipos de retorno múltiples
 from .gaussian_emissions import log_gaussian_emission  # Probabilidades de emisión
-from .utils import log_normalize  # Normalización de probabilidades
+from .utils import log_normalize, LOG_EPS  # Normalización y constante para log seguro
 
 
 def _forward(log_B: np.ndarray,
@@ -203,8 +209,8 @@ def forward_backward(observations: np.ndarray,
     log_B = log_gaussian_emission(observations, mu, sigma)  # [T, K]
 
     # PASO 2: Convertir todo a escala logarítmica (evita números muy pequeños)
-    log_A = np.log(A + 1e-10)  # +1e-10 evita log(0)
-    log_pi = np.log(pi + 1e-10)
+    log_A = np.log(A + LOG_EPS)  # +LOG_EPS evita log(0) = -infinito
+    log_pi = np.log(pi + LOG_EPS)  # +LOG_EPS evita log(0) = -infinito
 
     # PASO 3: Ejecutar algoritmo forward (del pasado al presente)
     log_alpha, log_likelihood = _forward(log_B, log_A, log_pi)

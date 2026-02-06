@@ -1,6 +1,8 @@
 """
 Utilidades para algoritmos HMM.
 Funciones auxiliares: normalización y inicialización de parámetros.
+
+Referencia: Rabiner (1989), A Tutorial on Hidden Markov Models, IEEE Proc. 77(2), pp. 257-286.
 """
 
 import numpy as np  # Librería para operaciones matemáticas con arrays
@@ -9,7 +11,8 @@ from sklearn.cluster import KMeans  # Algoritmo de clustering para inicializaci�
 from typing import Tuple  # Para indicar tipos de retorno múltiples
 
 # === CONSTANTES DE SEGURIDAD ===
-EPS = 1e-5  # Número pequeño para evitar dividir por cero
+EPS = 1e-5  # Número pequeño para evitar dividir por cero en denominadores
+LOG_EPS = 1e-10  # Número pequeño para evitar log(0) = -infinito
 LOG_ZERO = -1e10  # Representa log(0) sin causar errores
 
 
@@ -54,9 +57,15 @@ def initialize_kmeans(observations: np.ndarray,
     # mu: Centro de cada cluster (valor típico de cada estado)
     mu = kmeans.cluster_centers_.flatten()
 
-    # sigma: Dispersión de los datos (igual para todos los estados, conservador)
-    global_std = np.std(observations)  # Desviación estándar global
-    sigma = np.full(K, max(global_std, EPS))  # Array de K elementos con mismo valor
+    # sigma: Dispersión de cada cluster (adaptada, no global uniforme)
+    global_std = np.std(observations)  # Desviación estándar global como fallback
+    sigma = np.empty(K)  # Array para guardar dispersión de cada estado
+    for k in range(K):
+        mask = (labels == k)  # Seleccionar puntos asignados al cluster k
+        if mask.sum() > 1:  # Si el cluster tiene más de 1 punto
+            sigma[k] = max(np.std(observations[mask]), EPS)  # Std real del cluster
+        else:
+            sigma[k] = max(global_std, EPS)  # Fallback: std global si solo 1 punto
 
     # pi: Probabilidad de empezar en cada estado (según frecuencia de clusters)
     pi = np.bincount(labels, minlength=K).astype(float)  # Cuenta puntos por cluster
