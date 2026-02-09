@@ -16,6 +16,7 @@ Técnicas soportadas:
     - foundation: MOMENT (masked patches)
     - hmm: RITMO hard (Viterbi argmax → embedding lookup)
     - hmm_soft: RITMO soft (gamma posteriors → mezcla ponderada de embeddings)
+    - hmm_soft_residual: RITMO soft + residual intra-regimen (gamma + r_t)
 """
 
 from data_provider.data_factory import data_provider
@@ -66,7 +67,7 @@ class Exp_Plan_A(Exp_Basic):
         super(Exp_Plan_A, self).__init__(args)
 
         # Verificar técnica válida
-        valid_techniques = ['discretization', 'text_based', 'patching', 'decomposition', 'foundation', 'hmm', 'hmm_soft']
+        valid_techniques = ['discretization', 'text_based', 'patching', 'decomposition', 'foundation', 'hmm', 'hmm_soft', 'hmm_soft_residual']
         if not hasattr(args, 'technique') or args.technique not in valid_techniques:
             raise ValueError(f"args.technique debe ser una de: {valid_techniques}")
 
@@ -126,7 +127,7 @@ class Exp_Plan_A(Exp_Basic):
             self.embedder_pos = nn.Parameter(torch.zeros(1, 5000, d_model))  # Max 5000 patches
             self.embedder_mask = nn.Parameter(torch.zeros(1, 1, d_model))  # [MASK] token
 
-        elif self.technique in ('hmm', 'hmm_soft'):
+        elif self.technique in ('hmm', 'hmm_soft', 'hmm_soft_residual'):
             # EmbeddingGenerator con parámetros HMM
             # Cache debe estar en ./cache/hmm_{data}_{K}.pth
             hmm_k = getattr(self.args, 'hmm_k', 5)
@@ -182,9 +183,11 @@ class Exp_Plan_A(Exp_Basic):
         elif self.technique == 'foundation':
             params += list(self.embedder_patch.parameters())
             params += [self.embedder_pos, self.embedder_mask]
-        elif self.technique in ('hmm', 'hmm_soft'):
+        elif self.technique in ('hmm', 'hmm_soft', 'hmm_soft_residual'):
             # EmbeddingGenerator tiene proyección lineal aprendible
             params += list(self.embedder.projection.parameters())
+            if self.technique == 'hmm_soft_residual':
+                params += list(self.embedder.projection_residual.parameters())
 
         model_optim = optim.Adam(params, lr=self.args.learning_rate)
         return model_optim
@@ -255,7 +258,7 @@ class Exp_Plan_A(Exp_Basic):
                 )
                 tokens_list.append(torch.tensor(states, dtype=torch.long))
 
-            elif self.technique == 'hmm_soft':
+            elif self.technique in ('hmm_soft', 'hmm_soft_residual'):
                 # RITMO soft: gamma posteriors (mezcla ponderada)
                 gamma, _, _ = forward_backward(
                     observations=serie_norm,
@@ -264,7 +267,14 @@ class Exp_Plan_A(Exp_Basic):
                     mu=self.hmm_params['mu'].cpu().numpy(),
                     sigma=self.hmm_params['sigma'].cpu().numpy()
                 )
-                tokens_list.append(torch.tensor(gamma, dtype=torch.float32))
+                if self.technique == 'hmm_soft_residual':
+                    # Devolver tupla (gamma, valores crudos) para calcular residual
+                    tokens_list.append((
+                        torch.tensor(gamma, dtype=torch.float32),
+                        torch.tensor(serie_norm, dtype=torch.float32)
+                    ))
+                else:
+                    tokens_list.append(torch.tensor(gamma, dtype=torch.float32))
 
         return tokens_list
 
@@ -281,7 +291,9 @@ class Exp_Plan_A(Exp_Basic):
         embeddings_list = []
 
         for tokens in tokens_list:
-            tokens = tokens.to(self.device)
+            # hmm_soft_residual pasa tupla (gamma, x), no mover aqui
+            if not isinstance(tokens, tuple):
+                tokens = tokens.to(self.device)
 
             if self.technique in ['discretization', 'text_based']:
                 # Lookup table: [seq_len] → [seq_len, d_model]
@@ -313,6 +325,13 @@ class Exp_Plan_A(Exp_Basic):
             elif self.technique == 'hmm_soft':
                 # EmbeddingGenerator soft: [seq_len, K] → [seq_len, d_model]
                 embeds = self.embedder.forward_soft(tokens)
+
+            elif self.technique == 'hmm_soft_residual':
+                # Soft gamma + residual intra-regimen
+                gamma, x_raw = tokens  # tupla (gamma [T,K], x [T])
+                gamma = gamma.to(self.device)
+                x_raw = x_raw.to(self.device)
+                embeds = self.embedder.forward_soft_residual(gamma, x_raw)
 
             embeddings_list.append(embeds)
 
