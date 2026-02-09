@@ -77,9 +77,16 @@ class EmbeddingGenerator(nn.Module):
             torch.from_numpy(embedding_table).float()
         )
 
+        # Guardar mu y sigma como buffers para residual intra-regimen
+        self.register_buffer('mu', torch.from_numpy(mu).float())
+        self.register_buffer('sigma', torch.from_numpy(sigma).float())
+
         # Capa de proyección: reduce/expande al tamaño del Transformer
         # Esta SÍ se entrena (tiene gradientes)
         self.projection = nn.Linear(self.embedding_dim, d_model)
+
+        # Proyección para soft_residual: r_t (1) + mu_k (1) + sigma_k (1) + A[k,:] (K) = 3 + K
+        self.projection_residual = nn.Linear(3 + K, d_model)
 
     def forward(self, tokens) -> torch.Tensor:
         """
@@ -135,6 +142,53 @@ class EmbeddingGenerator(nn.Module):
 
         # Proyectar: [T, 2+K] → [T, d_model]
         return self.projection(embeddings_raw)
+
+    def forward_soft_residual(self, gamma: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
+        """
+        Soft gamma + residual intra-regimen.
+        r_t = (x_t - mu_soft_t) / sigma_soft_t donde mu/sigma_soft son mezcla ponderada.
+        e_t = projection([r_t, mu_soft_t, sigma_soft_t, A_soft_t])
+
+        Entrada:
+            gamma: Posteriors [T, K] del forward-backward
+            x: Valores observados [T] o [T, 1]
+
+        Salida:
+            Tensor de embeddings [T, d_model]
+        """
+        if isinstance(gamma, np.ndarray):
+            gamma = torch.from_numpy(gamma).float().to(self.device)
+        else:
+            gamma = gamma.float().to(self.device)
+
+        if isinstance(x, np.ndarray):
+            x = torch.from_numpy(x).float().to(self.device)
+        else:
+            x = x.float().to(self.device)
+
+        if x.dim() > 1:
+            x = x.squeeze(-1)  # [T, 1] -> [T]
+
+        # mu y sigma ponderados por gamma: [T, K] @ [K] = [T]
+        mu_soft = gamma @ self.mu          # [T]
+        sigma_soft = gamma @ self.sigma    # [T]
+        sigma_soft = torch.clamp(sigma_soft, min=1e-6)
+
+        # Residual intra-regimen
+        r_t = (x - mu_soft) / sigma_soft   # [T]
+
+        # Transiciones ponderadas: [T, K] @ [K, K] = [T, K]
+        A_soft = gamma @ self.embedding_table[:, 2:]
+
+        # Concatenar: [r_t, mu_soft, sigma_soft, A_soft] -> [T, 3+K]
+        features = torch.cat([
+            r_t.unsqueeze(-1),          # [T, 1]
+            mu_soft.unsqueeze(-1),      # [T, 1]
+            sigma_soft.unsqueeze(-1),   # [T, 1]
+            A_soft,                     # [T, K]
+        ], dim=-1)
+
+        return self.projection_residual(features)
 
     def get_embedding_table(self) -> torch.Tensor:
         """
