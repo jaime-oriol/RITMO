@@ -273,15 +273,11 @@ class Model(nn.Module):
         # Normalizar salida del encoder antes de projection
         self.norm = nn.LayerNorm(self.d_model)
 
-        # Adaptive pooling
-        # Maneja diferentes longitudes de secuencia producidas por técnicas diferentes
-        # Ejemplo: Discretización produce T=5000 tokens, Patching produce T=312 patches
-        # Adaptive pooling las unifica a longitud fija antes de projection
-        self.adaptive_pool = nn.AdaptiveAvgPool1d(self.pred_len)
-
-        # Projection head
-        # Proyecta de d_model a la dimensión de salida (número de variables)
-        self.projection = nn.Linear(self.d_model, configs.enc_in)
+        # Flatten + Linear head (como PatchTST)
+        # Todos los timesteps del input contribuyen a cada timestep de la predicción
+        self.flatten = nn.Flatten(start_dim=-2)  # [B, seq_len, d_model] → [B, seq_len*d_model]
+        self.head = nn.Linear(self.seq_len * self.d_model, self.pred_len * configs.enc_in)
+        self.enc_in = configs.enc_in
 
         # Inicializacion de pesos
         # Xavier initialization para mejor convergencia
@@ -344,26 +340,11 @@ class Model(nn.Module):
         # Normalizar salida del encoder
         x = self.norm(x)  # [batch, seq_len, d_model]
 
-        # 4. Adaptive pooling
-        # Reducir/expandir longitud de secuencia a pred_len
-        # Diferentes técnicas producen diferentes seq_len:
-        #   - Discretización: seq_len = 5000
-        #   - Patching: seq_len = 312
-        # Adaptive pooling unifica a pred_len (ej: 96, 192, 336, 720)
-
-        # Transponer para pooling: [batch, seq_len, d_model] → [batch, d_model, seq_len]
-        x = x.transpose(1, 2)
-
-        # Pooling adaptativo: [batch, d_model, seq_len] → [batch, d_model, pred_len]
-        x = self.adaptive_pool(x)
-
-        # Transponer de vuelta: [batch, d_model, pred_len] → [batch, pred_len, d_model]
-        x = x.transpose(1, 2)
-
-        # 5. Projection head
-        # Proyectar de d_model a número de variables de salida
-        # [batch, pred_len, d_model] → [batch, pred_len, enc_in]
-        x = self.projection(x)
+        # 4. Flatten + Linear head
+        # [batch, seq_len, d_model] → [batch, seq_len*d_model] → [batch, pred_len*enc_in]
+        x = self.flatten(x)
+        x = self.head(x)
+        x = x.view(-1, self.pred_len, self.enc_in)
 
         # Salida está en espacio normalizado
         # Debe desnormalizarse EXTERNAMENTE en exp_plan_a.py con RevIN
