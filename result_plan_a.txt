@@ -18,3 +18,7 @@ plan_a_ETTh1_96_96_TransformerCommon_ETTh1_ftS_sl96_ll48_pl96_dm256_nh4_el3_dl1_
 Technique: hmm_soft_residual
 mse:0.059954263269901276, mae:0.18942216038703918
 
+plan_a_ETTh1_96_96_TransformerCommon_ETTh1_ftS_sl96_ll48_pl96_dm256_nh4_el3_dl1_df512_expand2_dc4_fc1_ebtimeF_dtTrue_Plan_A_hmm_soft_residual_K5_0  
+Technique: hmm_soft_residual
+mse:0.058636121451854706, mae:0.18723560869693756
+
