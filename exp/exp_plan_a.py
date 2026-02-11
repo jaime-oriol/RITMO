@@ -26,6 +26,7 @@ from utils.metrics import metric
 from layers.StandardNorm import Normalize  # RevIN oficial
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch import optim
 import os
 import time
@@ -316,7 +317,7 @@ class Exp_Plan_A(Exp_Basic):
                 patches = tokens  # [num_patches, patch_len]
                 embeds = self.embedder_patch(patches)  # [num_patches, d_model]
                 # Añadir positional
-                embeds = embeds + self.embedder_pos[:, :embeds.shape[0], :]
+                embeds = embeds + self.embedder_pos[0, :embeds.shape[0], :]
 
             elif self.technique == 'hmm':
                 # EmbeddingGenerator hard: [seq_len] → [seq_len, d_model]
@@ -335,14 +336,16 @@ class Exp_Plan_A(Exp_Basic):
 
             embeddings_list.append(embeds)
 
-        # Pad/truncate a longitud común si es necesario
-        # Por ahora asumimos longitud fija o adaptive pooling maneja diferencias
-        max_len = max(e.shape[0] for e in embeddings_list)
+        # Adaptive pooling a seq_len (lo que espera el head del modelo)
+        # Necesario porque text_based expande (96→~1016) y patching comprime (96→6)
+        target_len = self.args.seq_len
         padded = []
         for e in embeddings_list:
-            if e.shape[0] < max_len:
-                pad = torch.zeros(max_len - e.shape[0], e.shape[1], device=e.device)
-                e = torch.cat([e, pad], dim=0)
+            if e.shape[0] != target_len:
+                # [L, d_model] → [1, d_model, L] → pool → [1, d_model, target] → [target, d_model]
+                e = e.unsqueeze(0).transpose(1, 2)
+                e = F.adaptive_avg_pool1d(e, target_len)
+                e = e.transpose(1, 2).squeeze(0)
             padded.append(e)
 
         # Stack: [B, seq_len, d_model]
