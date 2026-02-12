@@ -10,6 +10,7 @@ from torch.utils.data import DataLoader  # DataLoader de PyTorch
 data_dict = {
     'ETTh1': Dataset_ETT_hour,  # ETT horario
     'ETTh2': Dataset_ETT_hour,  # ETT horario variante
+    'Weather': Dataset_Custom,   # Weather (10-min, split 70/10/20)
     'custom': Dataset_Custom,    # CSV genérico
 }
 
