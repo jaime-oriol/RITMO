@@ -299,7 +299,7 @@ def top_k_coverage(tokens: np.ndarray, k: int = 5) -> float:
 
 def perturbation_stability(series: np.ndarray,
                            tokenize_and_reconstruct: Callable[[np.ndarray], np.ndarray],
-                           noise_levels: List[float] = [0.1, 0.5],
+                           noise_levels: List[float] = None,
                            n_reps: int = 3,
                            random_seed: int = 42) -> Dict[str, Any]:
     """
@@ -331,6 +331,8 @@ def perturbation_stability(series: np.ndarray,
             'by_level': dict por nivel con media de cambio relativo en MSE y ACF
             'summary': cambio relativo medio global
     """
+    if noise_levels is None:
+        noise_levels = [0.1, 0.5]
     rng = np.random.RandomState(random_seed)
     std = series.std()
     if std == 0:
