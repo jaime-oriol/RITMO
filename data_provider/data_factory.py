@@ -8,10 +8,13 @@ from torch.utils.data import DataLoader  # DataLoader de PyTorch
 
 # Diccionario que mapea nombres a clases de Dataset
 data_dict = {
-    'ETTh1': Dataset_ETT_hour,  # ETT horario
-    'ETTh2': Dataset_ETT_hour,  # ETT horario variante
-    'Weather': Dataset_Custom,   # Weather (10-min, split 70/10/20)
-    'custom': Dataset_Custom,    # CSV genérico
+    'ETTh1': Dataset_ETT_hour,       # ETT horario
+    'ETTh2': Dataset_ETT_hour,       # ETT horario variante
+    'Weather': Dataset_Custom,        # Weather (10-min, split 70/10/20)
+    'Electricity': Dataset_Custom,    # Consumo eléctrico MT_320
+    'Traffic': Dataset_Custom,        # Ocupación sensores tráfico
+    'Exchange': Dataset_Custom,       # Tipos de cambio
+    'custom': Dataset_Custom,         # CSV genérico
 }
 
 

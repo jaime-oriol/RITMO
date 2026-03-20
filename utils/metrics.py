@@ -16,11 +16,12 @@ def RSE(pred, true):
 
 def CORR(pred, true):
     """
-    Correlación entre predicción y valores reales.
+    Correlación de Pearson entre predicción y valores reales.
     Mide la relación lineal entre ambas series.
     """
     u = ((true - true.mean(0)) * (pred - pred.mean(0))).sum(0)
-    d = np.sqrt(((true - true.mean(0)) ** 2 * (pred - pred.mean(0)) ** 2).sum(0))
+    d = np.sqrt(((true - true.mean(0)) ** 2).sum(0) * ((pred - pred.mean(0)) ** 2).sum(0))
+    d = np.where(d == 0, 1.0, d)  # Evitar división por cero
     return (u / d).mean(-1)
 
 
@@ -52,9 +53,9 @@ def MAPE(pred, true):
     """
     Mean Absolute Percentage Error.
     Error porcentual: útil para comparar entre datasets.
-    Cuidado: falla si true contiene ceros.
     """
-    return np.mean(np.abs((true - pred) / true))
+    eps = 1e-8
+    return np.mean(np.abs((true - pred) / np.maximum(np.abs(true), eps)))
 
 
 def MSPE(pred, true):
@@ -62,7 +63,8 @@ def MSPE(pred, true):
     Mean Squared Percentage Error.
     Versión cuadrada de MAPE.
     """
-    return np.mean(np.square((true - pred) / true))
+    eps = 1e-8
+    return np.mean(np.square((true - pred) / np.maximum(np.abs(true), eps)))
 
 
 def metric(pred, true):

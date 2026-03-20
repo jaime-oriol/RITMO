@@ -46,12 +46,11 @@ def _forward(log_B: np.ndarray,
     log_alpha[0] = log_pi + log_B[0]
 
     # PASO 2: Recursión hacia adelante (t=1 hasta T-1)
+    # Vectorizado: para cada t, calcula todos los K estados a la vez
+    # log_alpha[t-1][:, None] + log_A = [K, K] donde fila j, col k = log_alpha[t-1,j] + log_A[j,k]
+    # logsumexp sobre eje 0 da [K] = log(sum_j alpha[t-1,j] * A[j,k]) para cada k
     for t in range(1, T):
-        for k in range(K):
-            # Para llegar al estado k en tiempo t:
-            # Sumar probabilidades de venir desde TODOS los estados previos j
-            # y multiplicar por prob de transición j→k y emisión en k
-            log_alpha[t, k] = logsumexp(log_alpha[t-1] + log_A[:, k]) + log_B[t, k]
+        log_alpha[t] = logsumexp(log_alpha[t-1][:, np.newaxis] + log_A, axis=0) + log_B[t]
 
     # PASO 3: Probabilidad total = suma de probabilidades en todos los estados finales
     log_likelihood = logsumexp(log_alpha[-1])
@@ -85,12 +84,11 @@ def _backward(log_B: np.ndarray,
     log_beta[-1] = 0.0
 
     # PASO 2: Recursión hacia atrás (t=T-2 hasta 0)
+    # Vectorizado: para cada t, calcula todos los K estados a la vez
+    # log_A + log_B[t+1] + log_beta[t+1] = [K, K] donde fila k, col j
+    # logsumexp sobre eje 1 da [K] = log(sum_j A[k,j] * B[t+1,j] * beta[t+1,j])
     for t in range(T-2, -1, -1):
-        for k in range(K):
-            # Para cada estado k en tiempo t:
-            # Sumar probabilidades de ir a TODOS los estados siguientes j
-            # considerando: transición k→j, emisión en j, y beta futuro de j
-            log_beta[t, k] = logsumexp(log_A[k, :] + log_B[t+1] + log_beta[t+1])
+        log_beta[t] = logsumexp(log_A + log_B[t+1] + log_beta[t+1], axis=1)
 
     return log_beta
 
@@ -148,24 +146,19 @@ def _compute_xi(log_alpha: np.ndarray,
     """
     T, K = log_alpha.shape
 
-    # T-1 transiciones (entre t y t+1 para t=0..T-2)
-    xi = np.zeros((T-1, K, K))
+    # Vectorizado: calcula todas las transiciones de una vez
+    # log_alpha[:-1] = [T-1, K] → [T-1, K, 1] (estados origen)
+    # log_A = [K, K] broadcast a [1, K, K]
+    # log_B[1:] = [T-1, K] → [T-1, 1, K] (estados destino)
+    # log_beta[1:] = [T-1, K] → [T-1, 1, K]
+    # Suma = [T-1, K, K] donde [t, k, l] = alpha[t,k] + A[k,l] + B[t+1,l] + beta[t+1,l]
+    log_xi = (log_alpha[:-1, :, np.newaxis] +    # [T-1, K, 1]
+              log_A[np.newaxis, :, :] +           # [1, K, K]
+              log_B[1:, np.newaxis, :] +          # [T-1, 1, K]
+              log_beta[1:, np.newaxis, :] -       # [T-1, 1, K]
+              log_likelihood)                     # escalar
 
-    # Para cada tiempo t y cada par de estados (k, l)
-    for t in range(T-1):
-        for k in range(K):  # Estado origen
-            for l in range(K):  # Estado destino
-                # Prob de transición k→l en tiempo t:
-                # = (llegar a k) × (transición k→l) × (emitir en l) × (futuro desde l)
-                # Todo dividido por probabilidad total
-                log_xi_tkl = (log_alpha[t, k] +      # Prob de llegar a k
-                             log_A[k, l] +           # Prob de transición k→l
-                             log_B[t+1, l] +         # Prob de emitir observación en l
-                             log_beta[t+1, l] -      # Prob del futuro desde l
-                             log_likelihood)         # Normalización
-
-                # Convertir de logaritmo a probabilidad normal
-                xi[t, k, l] = np.exp(log_xi_tkl)
+    xi = np.exp(log_xi)
 
     return xi
 

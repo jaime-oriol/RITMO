@@ -94,6 +94,8 @@ def baum_welch(observations: np.ndarray,
         numerator_A = np.sum(xi, axis=0)  # Suma de transiciones k→l
         denominator_A = np.sum(gamma[:-1, :], axis=0)[:, np.newaxis]  # Veces en k
         A = numerator_A / (denominator_A + EPS)  # División segura
+        # Re-normalizar filas para garantizar propiedad estocástica (sum=1)
+        A = A / A.sum(axis=1, keepdims=True)
 
         # Actualizar mu: media de cada estado
         # = promedio de observaciones ponderado por prob de estar en ese estado
@@ -125,8 +127,8 @@ def baum_welch(observations: np.ndarray,
                 'ΔLL': f'{delta_ll:.2e}'
             })
 
-        # Si ya no mejora significativamente, parar
-        if delta_ll < epsilon:
+        # Si ya no mejora significativamente, parar (saltar iter 0 donde prev=-inf)
+        if iteration > 0 and delta_ll < epsilon:
             converged = True
             if verbose:
                 iterator.close()

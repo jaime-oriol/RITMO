@@ -66,7 +66,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(vali_loader):
                 # Mover datos a dispositivo
                 batch_x = batch_x.float().to(self.device)
-                batch_y = batch_y.float()
+                batch_y = batch_y.float().to(self.device)
                 batch_x_mark = batch_x_mark.float().to(self.device)
                 batch_y_mark = batch_y_mark.float().to(self.device)
 
@@ -84,7 +84,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 # Extraer predicciones
                 f_dim = -1 if self.args.features == 'MS' else 0
                 outputs = outputs[:, -self.args.pred_len:, f_dim:]
-                batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
+                batch_y = batch_y[:, -self.args.pred_len:, f_dim:]
 
                 # Calcular pérdida
                 pred = outputs.detach()
@@ -149,14 +149,14 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                         outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
                         f_dim = -1 if self.args.features == 'MS' else 0
                         outputs = outputs[:, -self.args.pred_len:, f_dim:]
-                        batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
+                        batch_y = batch_y[:, -self.args.pred_len:, f_dim:]
                         loss = criterion(outputs, batch_y)
                         train_loss.append(loss.item())
                 else:
                     outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
                     f_dim = -1 if self.args.features == 'MS' else 0
                     outputs = outputs[:, -self.args.pred_len:, f_dim:]
-                    batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
+                    batch_y = batch_y[:, -self.args.pred_len:, f_dim:]
                     loss = criterion(outputs, batch_y)
                     train_loss.append(loss.item())
 
@@ -196,7 +196,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
         # Cargar mejor modelo
         best_model_path = path + '/' + 'checkpoint.pth'
-        self.model.load_state_dict(torch.load(best_model_path))
+        self.model.load_state_dict(torch.load(best_model_path, weights_only=True))
 
         return self.model
 
@@ -209,7 +209,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         test_data, test_loader = self._get_data(flag='test')
         if test:
             print('loading model')
-            self.model.load_state_dict(torch.load(os.path.join('./checkpoints/' + setting, 'checkpoint.pth')))
+            self.model.load_state_dict(torch.load(os.path.join('./checkpoints/' + setting, 'checkpoint.pth'), weights_only=True))
 
         preds = []
         trues = []

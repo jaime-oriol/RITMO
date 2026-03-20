@@ -61,15 +61,12 @@ def viterbi_decode(observations: np.ndarray,
     delta[0] = log_pi + log_B[0]
 
     # PASO 5: Llenar la tabla hacia adelante (t=1 hasta T-1)
+    # Vectorizado: delta[t-1][:, None] + log_A = [K, K] donde fila j, col k
+    # max sobre eje 0 da el mejor estado previo para cada k
     for t in range(1, T):
-        for k in range(K):
-            # Para cada estado k, buscar el mejor estado previo j
-            # scores[j] = prob de estar en j + prob de transición j→k
-            scores = delta[t-1] + log_A[:, k]
-
-            # Guardar el mejor estado previo y su probabilidad
-            psi[t, k] = np.argmax(scores)  # ¿De dónde venimos?
-            delta[t, k] = scores[psi[t, k]] + log_B[t, k]  # Mejor prob + emisión
+        scores = delta[t-1][:, np.newaxis] + log_A  # [K, K]
+        psi[t] = np.argmax(scores, axis=0)           # [K]
+        delta[t] = np.max(scores, axis=0) + log_B[t]  # [K]
 
     # PASO 6: Encontrar el mejor estado final
     last_state = np.argmax(delta[-1])  # Estado con mayor prob en tiempo final
