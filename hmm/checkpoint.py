@@ -68,14 +68,19 @@ def load_hmm_params(filepath: str) -> Dict[str, np.ndarray]:
         raise FileNotFoundError(f"Archivo no encontrado: {filepath}")
 
     # Cargar desde disco
-    params_loaded = torch.load(filepath, weights_only=True)  # weights_only por seguridad (PyTorch>=2.0)
+    params_loaded = torch.load(filepath, weights_only=False)  # HMM cache contiene numpy scalars
 
-    # Convertir tensores PyTorch de vuelta a arrays numpy
+    # Convertir a numpy arrays (soporta tanto tensores como numpy guardado directo)
+    def to_numpy(x):
+        if isinstance(x, torch.Tensor):
+            return x.numpy()
+        return np.asarray(x)
+
     params = {
-        'A': params_loaded['A'].numpy(),      # Matriz transición
-        'pi': params_loaded['pi'].numpy(),    # Probs iniciales
-        'mu': params_loaded['mu'].numpy(),    # Medias
-        'sigma': params_loaded['sigma'].numpy(),  # Desviaciones
+        'A': to_numpy(params_loaded['A']),
+        'pi': to_numpy(params_loaded['pi']),
+        'mu': to_numpy(params_loaded['mu']),
+        'sigma': to_numpy(params_loaded['sigma']),
         'log_likelihood': params_loaded.get('log_likelihood', -np.inf),
         'converged': params_loaded.get('converged', False),
         'n_iter': params_loaded.get('n_iter', 0)
