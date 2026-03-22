@@ -68,7 +68,7 @@ class Exp_Plan_A(Exp_Basic):
         super(Exp_Plan_A, self).__init__(args)
 
         # Verificar técnica válida
-        valid_techniques = ['discretization', 'text_based', 'patching', 'decomposition', 'foundation', 'hmm', 'hmm_soft', 'hmm_soft_residual']
+        valid_techniques = ['discretization', 'text_based', 'patching', 'decomposition', 'foundation', 'hmm', 'hmm_soft', 'hmm_soft_residual', 'hmm_augmented', 'hmm_patched', 'hmm_split']
         if not hasattr(args, 'technique') or args.technique not in valid_techniques:
             raise ValueError(f"args.technique debe ser una de: {valid_techniques}")
 
@@ -128,7 +128,7 @@ class Exp_Plan_A(Exp_Basic):
             self.embedder_pos = nn.Parameter(torch.zeros(1, 5000, d_model))  # Max 5000 patches
             self.embedder_mask = nn.Parameter(torch.zeros(1, 1, d_model))  # [MASK] token
 
-        elif self.technique in ('hmm', 'hmm_soft', 'hmm_soft_residual'):
+        elif self.technique in ('hmm', 'hmm_soft', 'hmm_soft_residual', 'hmm_augmented', 'hmm_patched', 'hmm_split'):
             # EmbeddingGenerator con parámetros HMM
             # Cache debe estar en ./cache/hmm_{data}_{K}.pth
             hmm_k = getattr(self.args, 'hmm_k', 5)
@@ -144,6 +144,11 @@ class Exp_Plan_A(Exp_Basic):
             )
             # Guardar parámetros HMM para Viterbi / forward-backward
             self.hmm_params = hmm_params
+            # Cache numpy arrays para evitar reconversión tensor→numpy en cada muestra
+            self._hmm_A = hmm_params['A'].cpu().numpy() if isinstance(hmm_params['A'], torch.Tensor) else hmm_params['A']
+            self._hmm_pi = hmm_params['pi'].cpu().numpy() if isinstance(hmm_params['pi'], torch.Tensor) else hmm_params['pi']
+            self._hmm_mu = hmm_params['mu'].cpu().numpy() if isinstance(hmm_params['mu'], torch.Tensor) else hmm_params['mu']
+            self._hmm_sigma = hmm_params['sigma'].cpu().numpy() if isinstance(hmm_params['sigma'], torch.Tensor) else hmm_params['sigma']
 
     def _build_model(self):
         """
@@ -184,11 +189,19 @@ class Exp_Plan_A(Exp_Basic):
         elif self.technique == 'foundation':
             params += list(self.embedder_patch.parameters())
             params += [self.embedder_pos, self.embedder_mask]
-        elif self.technique in ('hmm', 'hmm_soft', 'hmm_soft_residual'):
+        elif self.technique in ('hmm', 'hmm_soft', 'hmm_soft_residual', 'hmm_augmented', 'hmm_patched', 'hmm_split'):
             # EmbeddingGenerator tiene proyección lineal aprendible
             params += list(self.embedder.projection.parameters())
             if self.technique == 'hmm_soft_residual':
                 params += list(self.embedder.projection_residual.parameters())
+            elif self.technique == 'hmm_augmented':
+                params += list(self.embedder.projection_augmented.parameters())
+            elif self.technique == 'hmm_patched':
+                params += list(self.embedder.projection_patched.parameters())
+            elif self.technique == 'hmm_split':
+                params += list(self.embedder.projection_value.parameters())
+                params += list(self.embedder.projection_gamma.parameters())
+                params += list(self.embedder.norm_split.parameters())
 
         model_optim = optim.Adam(params, lr=self.args.learning_rate)
         return model_optim
@@ -211,8 +224,11 @@ class Exp_Plan_A(Exp_Basic):
         B, L, C = batch_x_norm.shape
         tokens_list = []
 
+        # Convertir batch a numpy una sola vez (evitar B llamadas a detach().cpu().numpy())
+        batch_np = batch_x_norm[:, :, 0].detach().cpu().numpy()  # [B, L]
+
         for i in range(B):
-            serie_norm = batch_x_norm[i, :, 0].detach().cpu().numpy()  # [L]
+            serie_norm = batch_np[i]  # [L]
 
             if self.technique == 'discretization':
                 # SAX: símbolos discretos
@@ -223,9 +239,10 @@ class Exp_Plan_A(Exp_Basic):
                 # LLMTime: caracteres
                 result = text_based_tokenize(serie_norm, precision=2)
                 text = result['text']
-                # Mapear caracteres a índices
-                char_to_idx = {c: i for i, c in enumerate('0123456789-. ')}
-                indices = [char_to_idx.get(c, 12) for c in text]  # 12 = unknown
+                # Mapear caracteres a índices (dict cacheado como atributo de clase)
+                if not hasattr(self, '_char_to_idx'):
+                    self._char_to_idx = {c: i for i, c in enumerate('0123456789-. ')}
+                indices = [self._char_to_idx.get(c, 12) for c in text]
                 tokens_list.append(torch.tensor(indices, dtype=torch.long))
 
             elif self.technique == 'patching':
@@ -249,33 +266,32 @@ class Exp_Plan_A(Exp_Basic):
                 tokens_list.append(torch.tensor(patches, dtype=torch.float32))
 
             elif self.technique == 'hmm':
-                # RITMO hard: Viterbi decoding (argmax)
-                states, _ = viterbi_decode(
-                    observations=serie_norm,
-                    pi=self.hmm_params['pi'].cpu().numpy(),
-                    A=self.hmm_params['A'].cpu().numpy(),
-                    mu=self.hmm_params['mu'].cpu().numpy(),
-                    sigma=self.hmm_params['sigma'].cpu().numpy()
-                )
-                tokens_list.append(torch.tensor(states, dtype=torch.long))
+                # Viterbi batch procesado fuera del loop (ver abajo)
+                pass
 
-            elif self.technique in ('hmm_soft', 'hmm_soft_residual'):
-                # RITMO soft: gamma posteriors (mezcla ponderada)
+            elif self.technique in ('hmm_soft', 'hmm_soft_residual', 'hmm_augmented', 'hmm_patched', 'hmm_split'):
+                # RITMO soft/augmented/patched/split: gamma posteriors
                 gamma, _, _ = forward_backward(
                     observations=serie_norm,
-                    pi=self.hmm_params['pi'].cpu().numpy(),
-                    A=self.hmm_params['A'].cpu().numpy(),
-                    mu=self.hmm_params['mu'].cpu().numpy(),
-                    sigma=self.hmm_params['sigma'].cpu().numpy()
+                    A=self._hmm_A, pi=self._hmm_pi,
+                    mu=self._hmm_mu, sigma=self._hmm_sigma
                 )
-                if self.technique == 'hmm_soft_residual':
-                    # Devolver tupla (gamma, valores crudos) para calcular residual
+                if self.technique in ('hmm_soft_residual', 'hmm_augmented', 'hmm_patched', 'hmm_split'):
+                    # Devolver tupla (gamma, valores crudos)
                     tokens_list.append((
                         torch.tensor(gamma, dtype=torch.float32),
                         torch.tensor(serie_norm, dtype=torch.float32)
                     ))
                 else:
                     tokens_list.append(torch.tensor(gamma, dtype=torch.float32))
+
+        # HMM hard: procesar batch entero con viterbi_batch (mas eficiente)
+        if self.technique == 'hmm':
+            from hmm import viterbi_batch as _viterbi_batch
+            all_states = _viterbi_batch(
+                batch_np, self._hmm_A, self._hmm_pi, self._hmm_mu, self._hmm_sigma
+            )  # [B, L]
+            tokens_list = [torch.tensor(all_states[i], dtype=torch.long) for i in range(B)]
 
         return tokens_list
 
@@ -333,6 +349,27 @@ class Exp_Plan_A(Exp_Basic):
                 gamma = gamma.to(self.device)
                 x_raw = x_raw.to(self.device)
                 embeds = self.embedder.forward_soft_residual(gamma, x_raw)
+
+            elif self.technique == 'hmm_augmented':
+                # Valor crudo + gamma: HMM enriquece la serie con info de regimen
+                gamma, x_raw = tokens  # tupla (gamma [T,K], x [T])
+                gamma = gamma.to(self.device)
+                x_raw = x_raw.to(self.device)
+                embeds = self.embedder.forward_augmented(gamma, x_raw)
+
+            elif self.technique == 'hmm_patched':
+                # HMM + patching: enriquece con gamma y luego parchea (6 tokens)
+                gamma, x_raw = tokens
+                gamma = gamma.to(self.device)
+                x_raw = x_raw.to(self.device)
+                embeds = self.embedder.forward_patched(gamma, x_raw)
+
+            elif self.technique == 'hmm_split':
+                # Projections separadas: x_t y gamma no interfieren
+                gamma, x_raw = tokens
+                gamma = gamma.to(self.device)
+                x_raw = x_raw.to(self.device)
+                embeds = self.embedder.forward_split(gamma, x_raw)
 
             embeddings_list.append(embeds)
 

@@ -88,6 +88,20 @@ class EmbeddingGenerator(nn.Module):
         # Proyección para soft_residual: r_t (1) + mu_k (1) + sigma_k (1) + A[k,:] (K) = 3 + K
         self.projection_residual = nn.Linear(3 + K, d_model)
 
+        # Proyección para augmented: x_t (1) + gamma (K) = 1 + K
+        self.projection_augmented = nn.Linear(1 + K, d_model)
+
+        # Proyección para patched: parchea features [x_t, gamma_t] en patches
+        # patch_len * (1+K) features por patch → d_model
+        self.patch_len_hmm = 16  # Mismo que PatchTST
+        self.projection_patched = nn.Linear(self.patch_len_hmm * (1 + K), d_model)
+
+        # Proyección separada para split: x_t y gamma no interfieren
+        # Mismo diseño que DecompositionEmbedding (trend/seasonal separados)
+        self.projection_value = nn.Linear(1, d_model // 2)    # señal cruda
+        self.projection_gamma = nn.Linear(K, d_model // 2)    # info regimen
+        self.norm_split = nn.LayerNorm(d_model)
+
     def forward(self, tokens) -> torch.Tensor:
         """
         Convierte tokens HARD (Viterbi) en embeddings.
@@ -189,6 +203,122 @@ class EmbeddingGenerator(nn.Module):
         ], dim=-1)
 
         return self.projection_residual(features)
+
+    def forward_augmented(self, gamma: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
+        """
+        Valor crudo + gamma posteriors: el HMM ENRIQUECE la serie, no la reemplaza.
+        e_t = projection([x_t, gamma_t(0), ..., gamma_t(K-1)])
+
+        El valor x_t preserva TODA la informacion de la serie original.
+        gamma_t aporta la probabilidad de estar en cada regimen, codificando
+        estructura temporal explicita aprendida por el HMM.
+
+        Entrada:
+            gamma: Posteriors [T, K] del forward-backward
+            x: Valores observados [T] o [T, 1]
+
+        Salida:
+            Tensor de embeddings [T, d_model]
+        """
+        if isinstance(gamma, np.ndarray):
+            gamma = torch.from_numpy(gamma).float().to(self.device)
+        else:
+            gamma = gamma.float().to(self.device)
+
+        if isinstance(x, np.ndarray):
+            x = torch.from_numpy(x).float().to(self.device)
+        else:
+            x = x.float().to(self.device)
+
+        if x.dim() > 1:
+            x = x.squeeze(-1)  # [T, 1] -> [T]
+
+        # Concatenar: [x_t, gamma_t] -> [T, 1+K]
+        features = torch.cat([
+            x.unsqueeze(-1),  # [T, 1]
+            gamma,            # [T, K]
+        ], dim=-1)
+
+        return self.projection_augmented(features)
+
+    def forward_split(self, gamma: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
+        """
+        Projections separadas: x_t y gamma no interfieren.
+        Mismo diseño que DecompositionEmbedding (trend/seasonal separados).
+
+        x_t → Linear(1, d_model/2)   → señal cruda preservada
+        gamma → Linear(K, d_model/2) → info probabilistica de regimen
+        concat + LayerNorm → [T, d_model]
+
+        Entrada:
+            gamma: Posteriors [T, K] del forward-backward
+            x: Valores observados [T] o [T, 1]
+
+        Salida:
+            Tensor de embeddings [T, d_model]
+        """
+        if isinstance(gamma, np.ndarray):
+            gamma = torch.from_numpy(gamma).float().to(self.device)
+        else:
+            gamma = gamma.float().to(self.device)
+
+        if isinstance(x, np.ndarray):
+            x = torch.from_numpy(x).float().to(self.device)
+        else:
+            x = x.float().to(self.device)
+
+        if x.dim() > 1:
+            x = x.squeeze(-1)
+
+        # Projections separadas
+        emb_value = self.projection_value(x.unsqueeze(-1))  # [T, 1] → [T, d_model/2]
+        emb_gamma = self.projection_gamma(gamma)             # [T, K] → [T, d_model/2]
+
+        # Concatenar + normalizar
+        return self.norm_split(torch.cat([emb_value, emb_gamma], dim=-1))
+
+    def forward_patched(self, gamma: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
+        """
+        HMM + Patching: enriquece serie con gamma y luego parchea.
+        Combina lo mejor de HMM (info de regimen) con patching (compresion).
+
+        1. Construye features [x_t, gamma_t] para cada t → [T, 1+K]
+        2. Segmenta en patches non-overlapping → [T/P, P*(1+K)]
+        3. Proyecta cada patch → [T/P, d_model]
+
+        Entrada:
+            gamma: Posteriors [T, K] del forward-backward
+            x: Valores observados [T] o [T, 1]
+
+        Salida:
+            Tensor de embeddings [T/P, d_model] (6 tokens si T=96, P=16)
+        """
+        if isinstance(gamma, np.ndarray):
+            gamma = torch.from_numpy(gamma).float().to(self.device)
+        else:
+            gamma = gamma.float().to(self.device)
+
+        if isinstance(x, np.ndarray):
+            x = torch.from_numpy(x).float().to(self.device)
+        else:
+            x = x.float().to(self.device)
+
+        if x.dim() > 1:
+            x = x.squeeze(-1)
+
+        # [T, 1+K] features por timestep
+        features = torch.cat([x.unsqueeze(-1), gamma], dim=-1)  # [T, 1+K]
+
+        T = features.shape[0]
+        P = self.patch_len_hmm
+        num_patches = T // P
+
+        # Truncar a multiplo de P y reshape a patches
+        features = features[:num_patches * P]  # [num_patches*P, 1+K]
+        patches = features.view(num_patches, P * features.shape[-1])  # [num_patches, P*(1+K)]
+
+        # Proyectar cada patch
+        return self.projection_patched(patches)  # [num_patches, d_model]
 
     def get_embedding_table(self) -> torch.Tensor:
         """

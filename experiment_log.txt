@@ -1,0 +1,243 @@
+=== MASTER LOOP START Sat Mar 21 14:09:31 CET 2026 ===
+14:11 W=33 R=38
+14:11 *** 1 NEW RESULTS ***
+  MSE=0.057700 MAE=0.184807 | l48_pl96_dm32_nh4_el2_dl1_df64_expand2_dc4_fc1_ebtimeF_dtTrue_test_v3_patching_0
+14:13 W=33 R=38
+14:15 W=33 R=38
+14:17 W=22 R=39
+14:17 *** 1 NEW RESULTS ***
+  MSE=0.001314 MAE=0.026177 | 48_pl96_dm64_nh4_el2_dl1_df128_expand2_dc4_fc1_ebtimeF_dtTrue_test_v2_patching_0
+14:19 W=22 R=39
+14:22 W=22 R=39
+14:24 W=22 R=39
+14:26 W=22 R=39
+14:28 W=22 R=39
+14:30 W=22 R=39
+14:32 W=22 R=39
+14:34 W=22 R=39
+14:36 W=22 R=40
+14:36 *** 1 NEW RESULTS ***
+  MSE=0.001309 MAE=0.026559 | 96_dm64_nh4_el2_dl1_df128_expand2_dc4_fc1_ebtimeF_dtTrue_test_v2_decomposition_0
+14:38 W=22 R=40
+14:40 W=22 R=40
+14:42 W=22 R=41
+14:42 *** 1 NEW RESULTS ***
+  MSE=0.059365 MAE=0.186868 | _pl96_dm32_nh4_el2_dl1_df64_expand2_dc4_fc1_ebtimeF_dtTrue_test_v3_hmm_soft_K5_0
+14:45 W=22 R=41
+14:47 W=22 R=41
+14:49 W=22 R=41
+14:51 W=22 R=41
+14:53 W=22 R=41
+14:55 W=22 R=41
+14:57 W=22 R=41
+14:59 W=22 R=41
+15:01 W=22 R=41
+15:03 W=11 R=42
+15:03 *** 1 NEW RESULTS ***
+  MSE=0.058237 MAE=0.186524 | 2_nh4_el2_dl1_df64_expand2_dc4_fc1_ebtimeF_dtTrue_test_v3_hmm_soft_residual_K5_0
+15:06 W=11 R=42
+15:08 W=11 R=42
+15:10 W=11 R=42
+15:12 W=11 R=42
+15:14 W=11 R=42
+15:16 W=11 R=42
+15:18 W=11 R=42
+15:20 W=11 R=42
+15:22 W=11 R=42
+15:24 W=11 R=42
+15:27 W=11 R=42
+15:29 W=11 R=43
+15:29 *** 1 NEW RESULTS ***
+  MSE=0.001302 MAE=0.026242 | _pl96_dm64_nh4_el2_dl1_df128_expand2_dc4_fc1_ebtimeF_dtTrue_test_v2_foundation_0
+15:31 W=11 R=43
+15:33 W=11 R=43
+15:35 W=11 R=43
+15:37 W=11 R=43
+15:39 W=11 R=43
+15:41 W=11 R=43
+15:43 W=11 R=43
+15:46 W=11 R=43
+15:48 W=0 R=44
+15:48 *** 1 NEW RESULTS ***
+  MSE=0.089824 MAE=0.235956 | _nh4_el2_dl1_df128_expand2_dc4_fc1_ebtimeF_dtTrue_test_v2_hmm_soft_residual_K5_0
+15:48 All experiments done. Checking what's missing...
+Have 44 results. Missing 9 v2 experiments:
+  MISSING: ETTh1 pl=192 v2 patching
+  MISSING: ETTh1 pl=192 v2 decomposition
+  MISSING: ETTh1 pl=192 v2 foundation
+  MISSING: ETTh1 pl=192 v2 hmm_soft_K5
+  MISSING: ETTh1 pl=336 v2 decomposition
+  MISSING: ETTh1 pl=336 v2 foundation
+  MISSING: ETTh1 pl=336 v2 hmm_soft_K5
+  MISSING: Weather pl=96 v2 hmm_soft_K5
+  MISSING: Weather pl=96 v2 hmm_soft_residual_K5
+Launching 9 missing experiments
+  Running: ETTh1 pl=192 patching...
+  DONE: ETTh1 pl=192 patching -> mse:0.07433073222637177, mae:0.20888109505176544
+  Running: ETTh1 pl=192 decomposition...
+  DONE: ETTh1 pl=192 decomposition -> mse:0.07703208923339844, mae:0.21438515186309814
+  Running: ETTh1 pl=192 foundation...
+  DONE: ETTh1 pl=192 foundation -> mse:0.07431604713201523, mae:0.2091963142156601
+  Running: ETTh1 pl=192 hmm_soft_K5...
+  DONE: ETTh1 pl=192 hmm_soft_K5 -> mse:0.07623584568500519, mae:0.21628893911838531
+  Running: ETTh1 pl=336 decomposition...
+  DONE: ETTh1 pl=336 decomposition -> mse:0.09304789453744888, mae:0.24086861312389374
+  Running: ETTh1 pl=336 foundation...
+  DONE: ETTh1 pl=336 foundation -> mse:0.0854782983660698, mae:0.22879783809185028
+  Running: ETTh1 pl=336 hmm_soft_K5...
+  DONE: ETTh1 pl=336 hmm_soft_K5 -> mse:0.08820829540491104, mae:0.23303350806236267
+  Running: Weather pl=96 hmm_soft_K5...
+17:52 W=11 R=51
+17:52 *** 7 NEW RESULTS ***
+  MSE=0.088208 MAE=0.233034 | l336_dm64_nh4_el2_dl1_df128_expand2_dc4_fc1_ebtimeF_dtTrue_test_v2_hmm_soft_K5_0
+  MSE=0.085478 MAE=0.228798 | pl336_dm64_nh4_el2_dl1_df128_expand2_dc4_fc1_ebtimeF_dtTrue_test_v2_foundation_0
+  MSE=0.093048 MAE=0.240869 | 36_dm64_nh4_el2_dl1_df128_expand2_dc4_fc1_ebtimeF_dtTrue_test_v2_decomposition_0
+  MSE=0.076236 MAE=0.216289 | l192_dm64_nh4_el2_dl1_df128_expand2_dc4_fc1_ebtimeF_dtTrue_test_v2_hmm_soft_K5_0
+  MSE=0.074316 MAE=0.209196 | pl192_dm64_nh4_el2_dl1_df128_expand2_dc4_fc1_ebtimeF_dtTrue_test_v2_foundation_0
+  MSE=0.077032 MAE=0.214385 | 92_dm64_nh4_el2_dl1_df128_expand2_dc4_fc1_ebtimeF_dtTrue_test_v2_decomposition_0
+  MSE=0.074331 MAE=0.208881 | 8_pl192_dm64_nh4_el2_dl1_df128_expand2_dc4_fc1_ebtimeF_dtTrue_test_v2_patching_0
+17:54 W=11 R=51
+17:56 W=11 R=51
+17:58 W=11 R=51
+18:00 W=11 R=51
+18:02 W=11 R=51
+18:04 W=11 R=51
+18:07 W=11 R=51
+18:09 W=11 R=51
+18:11 W=11 R=51
+18:13 W=11 R=51
+18:15 W=11 R=51
+18:17 W=11 R=51
+18:19 W=11 R=51
+18:21 W=11 R=51
+18:24 W=11 R=51
+18:26 W=11 R=51
+18:40 W=11 R=52
+18:40 *** 1 NEW RESULTS ***
+  MSE=0.001276 MAE=0.026340 | pl96_dm64_nh4_el2_dl1_df128_expand2_dc4_fc1_ebtimeF_dtTrue_test_v2_hmm_soft_K5_0
+18:42 W=11 R=52
+18:44 W=11 R=52
+18:47 W=11 R=52
+18:49 W=11 R=52
+18:51 W=11 R=52
+18:53 W=11 R=52
+18:55 W=11 R=52
+18:57 W=11 R=52
+18:59 W=11 R=52
+19:01 W=11 R=52
+19:03 W=11 R=52
+19:06 W=11 R=52
+19:08 W=11 R=52
+19:10 W=11 R=52
+19:12 W=11 R=52
+19:14 W=11 R=52
+19:16 W=11 R=52
+19:18 W=11 R=52
+19:20 W=11 R=52
+19:23 W=11 R=52
+19:25 W=11 R=52
+19:27 W=11 R=52
+19:29 W=11 R=52
+19:31 W=11 R=52
+19:33 W=11 R=52
+19:35 W=11 R=52
+19:37 W=11 R=52
+19:40 W=11 R=52
+19:42 W=11 R=52
+19:44 W=11 R=52
+19:46 W=11 R=52
+19:48 W=11 R=52
+19:50 W=11 R=52
+19:52 W=11 R=52
+19:54 W=11 R=52
+19:56 W=11 R=52
+19:58 W=11 R=52
+20:00 W=11 R=52
+20:02 W=11 R=53
+20:02 *** 1 NEW RESULTS ***
+  MSE=0.001303 MAE=0.026643 | l96_dm64_nh4_el2_dl1_df128_expand2_dc4_fc1_ebtimeF_dtTrue_test_v2_hmm_soft_K10_0
+20:04 W=11 R=53
+20:06 W=11 R=53
+20:08 W=11 R=53
+20:10 W=11 R=53
+20:12 W=11 R=53
+20:14 W=11 R=53
+20:16 W=11 R=53
+20:18 W=11 R=53
+20:20 W=11 R=53
+20:22 W=11 R=53
+20:24 W=11 R=53
+20:26 W=11 R=53
+20:28 W=11 R=53
+20:30 W=11 R=53
+20:32 W=11 R=53
+20:34 W=11 R=53
+=== GENERATING FINAL ANALYSIS ===
+
+================================================================================
+  TABLA FINAL v2 - COMPARACION JUSTA (MISMA CONFIG)
+================================================================================
+
+  ETTh1 pl=96
+  #   Tecnica                        MSE          MAE         
+  ------------------------------------------------------------
+  1   patching                       0.055967     0.182144
+  2   foundation                     0.056185     0.182752
+  3   decomposition                  0.056759     0.182494
+  4   hmm_soft_residual_K5           0.058310     0.187254 <-HMM
+  5   hmm_augmented_K5               0.058479     0.185441 <-HMM
+  6   hmm_soft_residual_K1           0.058690     0.185165 <-HMM
+  7   text_based                     0.059171     0.185448
+  8   hmm_soft_residual_K8           0.059430     0.186766 <-HMM
+  9   discretization                 0.059818     0.187668
+  10  hmm_soft_K5                    0.059932     0.191590 <-HMM
+  11  hmm_soft_K1                    0.061462     0.194102 <-HMM
+  12  hmm_split_K5                   0.061902     0.192803 <-HMM
+  13  hmm_soft_K8                    0.063404     0.194012 <-HMM
+  14  hmm_patched_K5                 0.068651     0.204060 <-HMM
+  -> Gap: +4.2% (HMM loses)
+
+  ETTh1 pl=192
+  #   Tecnica                        MSE          MAE         
+  ------------------------------------------------------------
+  1   foundation                     0.074316     0.209196
+  2   patching                       0.074331     0.208881
+  3   patching_K5                    0.074331     0.208881
+  4   hmm_soft_K5                    0.076236     0.216289 <-HMM
+  5   decomposition                  0.077032     0.214385
+  6   hmm_soft_residual_K5           0.079492     0.221580 <-HMM
+  -> Gap: +2.6% (HMM loses)
+
+  ETTh1 pl=336
+  #   Tecnica                        MSE          MAE         
+  ------------------------------------------------------------
+  1   foundation                     0.085478     0.228798
+  2   patching                       0.085581     0.229117
+  3   hmm_soft_K5                    0.088208     0.233034 <-HMM
+  4   hmm_soft_residual_K5           0.089824     0.235956 <-HMM
+  5   decomposition                  0.093048     0.240869
+  -> Gap: +3.2% (HMM loses)
+
+  Weather pl=96
+  #   Tecnica                        MSE          MAE         
+  ------------------------------------------------------------
+  1   hmm_soft_K8                    0.001200     0.025386 <-HMM
+  2   hmm_soft_K5                    0.001276     0.026340 <-HMM
+  3   foundation                     0.001302     0.026242
+  4   hmm_soft_K1                    0.001303     0.026643 <-HMM
+  5   decomposition                  0.001309     0.026559
+  6   patching                       0.001314     0.026177
+  -> Gap: -7.9% (HMM WINS!)
+
+================================================================================
+  COMPARACION DE CONFIGS (ETTh1 pl=96)
+================================================================================
+  v1 (dm16): patching=0.056955 hmm=hmm_soft_K5=0.057830 gap=+1.5%
+  v1c (dm16+cos): patching=0.057005 hmm=hmm_soft_K5=0.057824 gap=+1.4%
+  v3 (dm32): patching=0.057700 hmm=hmm_soft_residual_K5=0.058237 gap=+0.9%
+  v2 (dm64): patching=0.055967 hmm=hmm_soft_residual_K5=0.058310 gap=+4.2%
+
+================================================================================
+  RECOMENDACION CONFIG FINAL
+================================================================================
+=== MASTER LOOP END Sat Mar 21 20:34:32 CET 2026 ===
