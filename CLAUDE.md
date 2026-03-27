@@ -1,5 +1,9 @@
 # CLAUDE.md - Guía de Desarrollo RITMO
 
+## Checkpoint de referencia
+
+Commit `c302807` (---CLEAN CHECKPOINT---): snapshot con todos los resultados experimentales previos (v0/v1/v2/v3, K sweeps parciales en Weather/ETTh1/ETTh2/ECL, 68 results, 75 checkpoints, caches HMM). Se borraron results/, checkpoints/, cache/ y test_results/ para re-ejecutar todo desde cero con pipeline estable. Consultar este commit para recuperar cualquier resultado anterior.
+
 ## Filosofía Core
 
 **Ve paso a paso, uno a uno. Despacio es el camino más rápido. Escribe siempre el código lo más compacto y conciso posible, y que cumpla exactamente lo pedido al 100%. Sin emojis ni florituras. Usa nombres claros y estándar. Incluye solo comentarios útiles y necesarios.**

@@ -41,7 +41,7 @@ from tecnicas.decomposition import decomposition_tokenize
 from tecnicas.foundation import foundation_tokenize
 
 # Importar HMM para técnica RITMO
-from hmm import viterbi_decode, forward_backward
+from hmm import viterbi_decode, forward_backward_batch
 from embeddings import EmbeddingGenerator
 
 warnings.filterwarnings('ignore')
@@ -189,19 +189,20 @@ class Exp_Plan_A(Exp_Basic):
         elif self.technique == 'foundation':
             params += list(self.embedder_patch.parameters())
             params += [self.embedder_pos, self.embedder_mask]
-        elif self.technique in ('hmm', 'hmm_soft', 'hmm_soft_residual', 'hmm_augmented', 'hmm_patched', 'hmm_split'):
-            # EmbeddingGenerator tiene proyección lineal aprendible
+        elif self.technique in ('hmm', 'hmm_soft'):
+            # hmm/hmm_soft usan projection (embedding_table -> d_model)
             params += list(self.embedder.projection.parameters())
-            if self.technique == 'hmm_soft_residual':
-                params += list(self.embedder.projection_residual.parameters())
-            elif self.technique == 'hmm_augmented':
-                params += list(self.embedder.projection_augmented.parameters())
-            elif self.technique == 'hmm_patched':
-                params += list(self.embedder.projection_patched.parameters())
-            elif self.technique == 'hmm_split':
-                params += list(self.embedder.projection_value.parameters())
-                params += list(self.embedder.projection_gamma.parameters())
-                params += list(self.embedder.norm_split.parameters())
+        elif self.technique == 'hmm_soft_residual':
+            # Solo projection_residual (3+K -> d_model)
+            params += list(self.embedder.projection_residual.parameters())
+        elif self.technique == 'hmm_augmented':
+            params += list(self.embedder.projection_augmented.parameters())
+        elif self.technique == 'hmm_patched':
+            params += list(self.embedder.projection_patched.parameters())
+        elif self.technique == 'hmm_split':
+            params += list(self.embedder.projection_value.parameters())
+            params += list(self.embedder.projection_gamma.parameters())
+            params += list(self.embedder.norm_split.parameters())
 
         model_optim = optim.Adam(params, lr=self.args.learning_rate)
         return model_optim
@@ -213,181 +214,166 @@ class Exp_Plan_A(Exp_Basic):
 
     def _tokenize_batch(self, batch_x_norm):
         """
-        Tokeniza batch según técnica especificada.
+        Tokeniza batch segun tecnica. Vectorizado para HMM (sin loop Python).
 
         Args:
             batch_x_norm: Batch normalizado [B, L, C]
 
         Returns:
-            Tokens según técnica (forma depende de técnica)
+            Tokens segun tecnica. Para HMM soft/residual devuelve tensores batch.
         """
         B, L, C = batch_x_norm.shape
-        tokens_list = []
-
-        # Convertir batch a numpy una sola vez (evitar B llamadas a detach().cpu().numpy())
         batch_np = batch_x_norm[:, :, 0].detach().cpu().numpy()  # [B, L]
 
-        for i in range(B):
-            serie_norm = batch_np[i]  # [L]
+        # HMM soft/residual: batch forward-backward vectorizado
+        if self.technique in ('hmm_soft', 'hmm_soft_residual', 'hmm_augmented', 'hmm_patched', 'hmm_split'):
+            gamma_batch, _, _ = forward_backward_batch(
+                batch_np, self._hmm_A, self._hmm_pi, self._hmm_mu, self._hmm_sigma
+            )  # gamma: [B, T, K]
+            gamma_t = torch.from_numpy(gamma_batch).float()
+            if self.technique in ('hmm_soft_residual', 'hmm_augmented', 'hmm_patched', 'hmm_split'):
+                x_t = torch.from_numpy(batch_np).float()
+                return ('batch_gamma_x', gamma_t, x_t)  # [B,T,K], [B,T]
+            return ('batch_gamma', gamma_t)  # [B,T,K]
 
-            if self.technique == 'discretization':
-                # SAX: símbolos discretos
-                result = sax_discretize(serie_norm, alphabet_size=8)
-                tokens_list.append(torch.tensor(result['tokens'], dtype=torch.long))
-
-            elif self.technique == 'text_based':
-                # LLMTime: caracteres
-                result = text_based_tokenize(serie_norm, precision=2)
-                text = result['text']
-                # Mapear caracteres a índices (dict cacheado como atributo de clase)
-                if not hasattr(self, '_char_to_idx'):
-                    self._char_to_idx = {c: i for i, c in enumerate('0123456789-. ')}
-                indices = [self._char_to_idx.get(c, 12) for c in text]
-                tokens_list.append(torch.tensor(indices, dtype=torch.long))
-
-            elif self.technique == 'patching':
-                # PatchTST: patches
-                patches = patching_tokenize(serie_norm, patch_len=16, stride=16)
-                tokens_list.append(torch.tensor(patches, dtype=torch.float32))
-
-            elif self.technique == 'decomposition':
-                # DLinear/Autoformer: trend + seasonal
-                result = decomposition_tokenize(serie_norm, kernel_size=25)
-                trend = result['trend']
-                seasonal = result['seasonal']
-                # Stack como [L, 2]
-                components = np.stack([trend, seasonal], axis=-1)
-                tokens_list.append(torch.tensor(components, dtype=torch.float32))
-
-            elif self.technique == 'foundation':
-                # MOMENT: patches con masking
-                result = foundation_tokenize(serie_norm, patch_len=16, stride=16, mask_ratio=0.3)
-                patches = result['patches']
-                tokens_list.append(torch.tensor(patches, dtype=torch.float32))
-
-            elif self.technique == 'hmm':
-                # Viterbi batch procesado fuera del loop (ver abajo)
-                pass
-
-            elif self.technique in ('hmm_soft', 'hmm_soft_residual', 'hmm_augmented', 'hmm_patched', 'hmm_split'):
-                # RITMO soft/augmented/patched/split: gamma posteriors
-                gamma, _, _ = forward_backward(
-                    observations=serie_norm,
-                    A=self._hmm_A, pi=self._hmm_pi,
-                    mu=self._hmm_mu, sigma=self._hmm_sigma
-                )
-                if self.technique in ('hmm_soft_residual', 'hmm_augmented', 'hmm_patched', 'hmm_split'):
-                    # Devolver tupla (gamma, valores crudos)
-                    tokens_list.append((
-                        torch.tensor(gamma, dtype=torch.float32),
-                        torch.tensor(serie_norm, dtype=torch.float32)
-                    ))
-                else:
-                    tokens_list.append(torch.tensor(gamma, dtype=torch.float32))
-
-        # HMM hard: procesar batch entero con viterbi_batch (mas eficiente)
+        # HMM hard: batch viterbi
         if self.technique == 'hmm':
             from hmm import viterbi_batch as _viterbi_batch
             all_states = _viterbi_batch(
                 batch_np, self._hmm_A, self._hmm_pi, self._hmm_mu, self._hmm_sigma
             )  # [B, L]
-            tokens_list = [torch.tensor(all_states[i], dtype=torch.long) for i in range(B)]
+            return ('batch_states', torch.from_numpy(all_states).long())
 
-        return tokens_list
+        # Tecnicas no-HMM: loop (inevitable, cada una tiene output shape diferente)
+        tokens_list = []
+        for i in range(B):
+            serie_norm = batch_np[i]
 
-    def _embed_tokens(self, tokens_list):
+            if self.technique == 'discretization':
+                result = sax_discretize(serie_norm, alphabet_size=8)
+                tokens_list.append(torch.tensor(result['tokens'], dtype=torch.long))
+
+            elif self.technique == 'text_based':
+                result = text_based_tokenize(serie_norm, precision=2)
+                if not hasattr(self, '_char_to_idx'):
+                    self._char_to_idx = {c: i for i, c in enumerate('0123456789-. ')}
+                indices = [self._char_to_idx.get(c, 12) for c in result['text']]
+                tokens_list.append(torch.tensor(indices, dtype=torch.long))
+
+            elif self.technique == 'patching':
+                patches = patching_tokenize(serie_norm, patch_len=16, stride=16)
+                tokens_list.append(torch.tensor(patches, dtype=torch.float32))
+
+            elif self.technique == 'decomposition':
+                result = decomposition_tokenize(serie_norm, kernel_size=25)
+                components = np.stack([result['trend'], result['seasonal']], axis=-1)
+                tokens_list.append(torch.tensor(components, dtype=torch.float32))
+
+            elif self.technique == 'foundation':
+                result = foundation_tokenize(serie_norm, patch_len=16, stride=16, mask_ratio=0.3)
+                tokens_list.append(torch.tensor(result['patches'], dtype=torch.float32))
+
+        return ('list', tokens_list)
+
+    def _embed_tokens(self, tokens_result):
         """
-        Genera embeddings desde tokens usando embedder natural.
+        Genera embeddings desde tokens. Batch-vectorizado para HMM.
 
         Args:
-            tokens_list: Lista de tokens (uno por muestra en batch)
+            tokens_result: Tupla (tipo, datos...) desde _tokenize_batch
 
         Returns:
             Embeddings [B, seq_len, d_model]
         """
-        embeddings_list = []
+        token_type = tokens_result[0]
 
-        for tokens in tokens_list:
-            # hmm_soft_residual pasa tupla (gamma, x), no mover aqui
-            if not isinstance(tokens, tuple):
-                tokens = tokens.to(self.device)
+        # HMM batch paths: ya son [B, T, K] o [B, T], sin loop Python
+        if token_type == 'batch_gamma':
+            # hmm_soft: [B, T, K] -> [B, T, d_model]
+            gamma = tokens_result[1].to(self.device)  # [B, T, K]
+            # Batch matmul: [B, T, K] @ [K, embed_dim] = [B, T, embed_dim]
+            embeddings_raw = torch.matmul(gamma, self.embedder.embedding_table)
+            return self.embedder.projection(embeddings_raw)  # [B, T, d_model]
 
-            if self.technique in ['discretization', 'text_based']:
-                # Lookup table: [seq_len] → [seq_len, d_model]
-                embeds = self.embedder(tokens)
+        if token_type == 'batch_gamma_x':
+            gamma = tokens_result[1].to(self.device)  # [B, T, K]
+            x = tokens_result[2].to(self.device)       # [B, T]
 
-            elif self.technique == 'patching':
-                # Proyección lineal: [num_patches, patch_len] → [num_patches, d_model]
-                embeds = self.embedder(tokens)
-
-            elif self.technique == 'decomposition':
-                # Proyectar trend y seasonal por separado, concatenar
-                trend = tokens[:, 0].unsqueeze(-1)  # [L, 1]
-                seasonal = tokens[:, 1].unsqueeze(-1)  # [L, 1]
-                embed_trend = self.embedder_trend(trend)  # [L, d_model//2]
-                embed_seasonal = self.embedder_seasonal(seasonal)  # [L, d_model//2]
-                embeds = torch.cat([embed_trend, embed_seasonal], dim=-1)  # [L, d_model]
-
-            elif self.technique == 'foundation':
-                # Patch + position embeddings
-                patches = tokens  # [num_patches, patch_len]
-                embeds = self.embedder_patch(patches)  # [num_patches, d_model]
-                # Añadir positional
-                embeds = embeds + self.embedder_pos[0, :embeds.shape[0], :]
-
-            elif self.technique == 'hmm':
-                # EmbeddingGenerator hard: [seq_len] → [seq_len, d_model]
-                embeds = self.embedder(tokens)
-
-            elif self.technique == 'hmm_soft':
-                # EmbeddingGenerator soft: [seq_len, K] → [seq_len, d_model]
-                embeds = self.embedder.forward_soft(tokens)
-
-            elif self.technique == 'hmm_soft_residual':
-                # Soft gamma + residual intra-regimen
-                gamma, x_raw = tokens  # tupla (gamma [T,K], x [T])
-                gamma = gamma.to(self.device)
-                x_raw = x_raw.to(self.device)
-                embeds = self.embedder.forward_soft_residual(gamma, x_raw)
+            if self.technique == 'hmm_soft_residual':
+                mu_soft = torch.matmul(gamma, self.embedder.mu)      # [B, T]
+                sigma_soft = torch.matmul(gamma, self.embedder.sigma)  # [B, T]
+                sigma_soft = torch.clamp(sigma_soft, min=1e-6)
+                r_t = (x - mu_soft) / sigma_soft  # [B, T]
+                A_soft = torch.matmul(gamma, self.embedder.embedding_table[:, 2:])  # [B, T, K]
+                features = torch.cat([
+                    r_t.unsqueeze(-1), mu_soft.unsqueeze(-1),
+                    sigma_soft.unsqueeze(-1), A_soft
+                ], dim=-1)  # [B, T, 3+K]
+                return self.embedder.projection_residual(features)
 
             elif self.technique == 'hmm_augmented':
-                # Valor crudo + gamma: HMM enriquece la serie con info de regimen
-                gamma, x_raw = tokens  # tupla (gamma [T,K], x [T])
-                gamma = gamma.to(self.device)
-                x_raw = x_raw.to(self.device)
-                embeds = self.embedder.forward_augmented(gamma, x_raw)
-
-            elif self.technique == 'hmm_patched':
-                # HMM + patching: enriquece con gamma y luego parchea (6 tokens)
-                gamma, x_raw = tokens
-                gamma = gamma.to(self.device)
-                x_raw = x_raw.to(self.device)
-                embeds = self.embedder.forward_patched(gamma, x_raw)
+                features = torch.cat([x.unsqueeze(-1), gamma], dim=-1)  # [B, T, 1+K]
+                return self.embedder.projection_augmented(features)
 
             elif self.technique == 'hmm_split':
-                # Projections separadas: x_t y gamma no interfieren
-                gamma, x_raw = tokens
-                gamma = gamma.to(self.device)
-                x_raw = x_raw.to(self.device)
-                embeds = self.embedder.forward_split(gamma, x_raw)
+                emb_value = self.embedder.projection_value(x.unsqueeze(-1))  # [B, T, d/2]
+                emb_gamma = self.embedder.projection_gamma(gamma)             # [B, T, d/2]
+                return self.embedder.norm_split(torch.cat([emb_value, emb_gamma], dim=-1))
 
+            elif self.technique == 'hmm_patched':
+                features = torch.cat([x.unsqueeze(-1), gamma], dim=-1)  # [B, T, 1+K]
+                B_sz, T, F_dim = features.shape
+                P = self.embedder.patch_len_hmm
+                num_patches = T // P
+                features = features[:, :num_patches * P, :]
+                patches = features.reshape(B_sz, num_patches, P * F_dim)
+                embeds = self.embedder.projection_patched(patches)  # [B, np, d_model]
+                # Adaptive pooling: [B, np, d] -> [B, seq_len, d]
+                embeds = embeds.transpose(1, 2)  # [B, d, np]
+                embeds = F.adaptive_avg_pool1d(embeds, self.args.seq_len)
+                return embeds.transpose(1, 2)  # [B, seq_len, d]
+
+        if token_type == 'batch_states':
+            # hmm hard: [B, T] -> [B, T, d_model]
+            states = tokens_result[1].to(self.device)  # [B, T]
+            embeddings_raw = self.embedder.embedding_table[states]  # [B, T, embed_dim]
+            return self.embedder.projection(embeddings_raw)
+
+        # Non-HMM: list path (loop, variable-length tokens)
+        tokens_list = tokens_result[1]
+        embeddings_list = []
+        for tokens in tokens_list:
+            tokens = tokens.to(self.device)
+
+            if self.technique in ['discretization', 'text_based']:
+                embeds = self.embedder(tokens)
+            elif self.technique == 'patching':
+                embeds = self.embedder(tokens)
+            elif self.technique == 'decomposition':
+                trend = tokens[:, 0].unsqueeze(-1)
+                seasonal = tokens[:, 1].unsqueeze(-1)
+                embeds = torch.cat([
+                    self.embedder_trend(trend),
+                    self.embedder_seasonal(seasonal)
+                ], dim=-1)
+            elif self.technique == 'foundation':
+                embeds = self.embedder_patch(tokens)
+                embeds = embeds + self.embedder_pos[0, :embeds.shape[0], :]
+            else:
+                raise ValueError(f"Tecnica desconocida: {self.technique}")
             embeddings_list.append(embeds)
 
-        # Adaptive pooling a seq_len (lo que espera el head del modelo)
-        # Necesario porque text_based expande (96→~1016) y patching comprime (96→6)
+        # Adaptive pooling para tecnicas con longitud variable
         target_len = self.args.seq_len
         padded = []
         for e in embeddings_list:
             if e.shape[0] != target_len:
-                # [L, d_model] → [1, d_model, L] → pool → [1, d_model, target] → [target, d_model]
                 e = e.unsqueeze(0).transpose(1, 2)
                 e = F.adaptive_avg_pool1d(e, target_len)
                 e = e.transpose(1, 2).squeeze(0)
             padded.append(e)
 
-        # Stack: [B, seq_len, d_model]
-        batch_embeds = torch.stack(padded, dim=0)
-        return batch_embeds
+        return torch.stack(padded, dim=0)
 
     def vali(self, vali_data, vali_loader, criterion):
         """

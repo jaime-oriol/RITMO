@@ -14,7 +14,7 @@ import numpy as np  # Operaciones matemáticas con arrays
 from scipy.special import logsumexp  # Suma de exponenciales estable
 from typing import Tuple  # Para indicar tipos de retorno múltiples
 from .gaussian_emissions import log_gaussian_emission  # Probabilidades de emisión
-from .utils import log_normalize, LOG_EPS  # Normalización y constante para log seguro
+from .utils import log_normalize, LOG_EPS, EPS  # Normalización y constante para log seguro
 
 
 def _forward(log_B: np.ndarray,
@@ -218,3 +218,87 @@ def forward_backward(observations: np.ndarray,
     xi = _compute_xi(log_alpha, log_beta, log_A, log_B, log_likelihood)
 
     return gamma, xi, log_likelihood
+
+
+def forward_backward_batch(observations: np.ndarray,
+                           A: np.ndarray,
+                           pi: np.ndarray,
+                           mu: np.ndarray,
+                           sigma: np.ndarray,
+                           need_xi: bool = False) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Forward-Backward vectorizado sobre un batch [B, T].
+    Precalcula log_A, log_pi una sola vez y procesa B series en paralelo.
+
+    Entrada:
+        observations: [B, T] batch de series temporales
+        A, pi, mu, sigma: parametros HMM (mismos para todo el batch)
+        need_xi: si True, calcula xi [B, T-1, K, K] (solo para Baum-Welch)
+
+    Salida:
+        gamma: [B, T, K] posteriors
+        log_likelihoods: [B] log-likelihood por serie
+        xi: [B, T-1, K, K] (solo si need_xi=True, sino None)
+    """
+    if observations.ndim == 1:
+        observations = observations[np.newaxis, :]  # [1, T]
+    if observations.ndim == 3:
+        observations = observations.squeeze(-1)  # [B, T, 1] -> [B, T]
+
+    B, T = observations.shape
+    K = len(mu)
+
+    # Precalcular log params (una sola vez para todo el batch)
+    log_A = np.log(A + LOG_EPS)     # [K, K]
+    log_pi = np.log(pi + LOG_EPS)   # [K]
+
+    # Log emisiones batch: [B, T, K]
+    sigma_sq = sigma ** 2 + EPS
+    log_const = -0.5 * np.log(2 * np.pi * sigma_sq)  # [K]
+    # observations [B, T, 1] - mu [K] -> [B, T, K]
+    diff = observations[:, :, np.newaxis] - mu[np.newaxis, np.newaxis, :]
+    log_B = log_const + (-diff ** 2 / (2 * sigma_sq))  # [B, T, K]
+
+    # Forward batch: [B, T, K]
+    log_alpha = np.empty((B, T, K))
+    log_alpha[:, 0, :] = log_pi + log_B[:, 0, :]  # [B, K]
+
+    for t in range(1, T):
+        # log_alpha[:, t-1, :, None] = [B, K, 1]
+        # log_A = [K, K]
+        # sum over source states (axis=1) -> [B, K]
+        log_alpha[:, t, :] = logsumexp(
+            log_alpha[:, t-1, :, np.newaxis] + log_A, axis=1
+        ) + log_B[:, t, :]
+
+    # Log-likelihoods: [B]
+    log_likelihoods = logsumexp(log_alpha[:, -1, :], axis=1)  # [B]
+
+    # Backward batch: [B, T, K]
+    log_beta = np.zeros((B, T, K))
+    for t in range(T - 2, -1, -1):
+        # log_A = [K, K], log_B[:, t+1] = [B, K], log_beta[:, t+1] = [B, K]
+        # [B, K, 1] + [K, K] + [B, 1, K] + [B, 1, K] -> logsumexp axis=2 -> [B, K]
+        log_beta[:, t, :] = logsumexp(
+            log_A + log_B[:, t+1, np.newaxis, :] + log_beta[:, t+1, np.newaxis, :],
+            axis=2
+        )
+
+    # Gamma: [B, T, K]
+    log_gamma = log_alpha + log_beta - log_likelihoods[:, np.newaxis, np.newaxis]
+    gamma = np.exp(log_gamma)
+
+    # Xi (opcional, solo para Baum-Welch)
+    xi = None
+    if need_xi:
+        # [B, T-1, K, K]
+        log_xi = (
+            log_alpha[:, :-1, :, np.newaxis] +   # [B, T-1, K, 1]
+            log_A[np.newaxis, np.newaxis, :, :] + # [1, 1, K, K]
+            log_B[:, 1:, np.newaxis, :] +         # [B, T-1, 1, K]
+            log_beta[:, 1:, np.newaxis, :] -      # [B, T-1, 1, K]
+            log_likelihoods[:, np.newaxis, np.newaxis, np.newaxis]
+        )
+        xi = np.exp(log_xi)
+
+    return gamma, log_likelihoods, xi
