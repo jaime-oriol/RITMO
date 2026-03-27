@@ -2,7 +2,8 @@
 
 ## Checkpoint de referencia
 
-Commit `c302807` (---CLEAN CHECKPOINT---): snapshot con todos los resultados experimentales previos (v0/v1/v2/v3, K sweeps parciales en Weather/ETTh1/ETTh2/ECL, 68 results, 75 checkpoints, caches HMM). Se borraron results/, checkpoints/, cache/ y test_results/ para re-ejecutar todo desde cero con pipeline estable. Consultar este commit para recuperar cualquier resultado anterior.
+- Commit `c302807` (---CLEAN CHECKPOINT---): snapshot con todos los resultados experimentales previos (v0/v1/v2/v3, K sweeps parciales en Weather/ETTh1/ETTh2/ECL, 68 results, 75 checkpoints, caches HMM). Consultar este commit para recuperar cualquier resultado anterior.
+- Commit `78e251f` (perf(hmm): batch forward-backward): optimizacion 15-20x del forward-backward, fix optimizer params. Ultimo commit estable antes del K sweep limpio.
 
 ## Filosofía Core
 
@@ -33,7 +34,7 @@ Desarrollar e implementar un sistema de tokenización de series temporales basad
 
 ¿Pueden los estados ocultos de un Hidden Markov Model actuar como embeddings latentes estructurados que capturen dependencias temporales y regímenes estadísticos de manera más efectiva que las técnicas determinísticas actuales de tokenización para la predicción de series temporales univariadas en el contexto de modelos de lenguaje?
 
-Para más detalles, consulta `Anteproyecto-RITMO.md`.
+Para más detalles, consulta `md/Anteproyecto-RITMO.md`.
 
 ## Estructura del Repositorio
 
@@ -94,17 +95,21 @@ RITMO/
 │   ├── patching.py         # Técnica: Patching (ej: PatchTST)
 │   ├── decomposition.py    # Técnica: Descomposición (ej: DLinear)
 │   ├── foundation.py       # Técnica: Foundation models (ej: MOMENT)
-│   ├── Electricity_tokenization.ipynb # Comparación en Electricity
+│   ├── metrics.py          # Métricas intrínsecas de tokenización
 │   ├── ETTh2_tokenization.ipynb       # Comparación en ETTh2
+│   ├── comparacion_metricas.ipynb     # Métricas intrínsecas 6 técnicas
 │   └── figures/            # Exportación automática de visualizaciones
 │
-├── notebooks/               # Notebooks de validación
-│   ├── RITMO_pipeline_validation.ipynb # Validación 4 fases
-│   └── figures/            # Figuras del pipeline
+├── notebooks/               # Notebooks de validación y experimentación
+│   ├── pipeline_RITMO_etth2.ipynb # Validación 4 fases del pipeline
+│   ├── k_sweep.ipynb       # K sweep: encontrar K y modelo HMM óptimo por dataset
+│   └── fase*.png           # Figuras generadas por pipeline_RITMO_etth2
 │
 ├── md/                      # Documentación técnica
-│   ├── RITMO_VALIDACION.md # Validación del pipeline
-│   └── TECNICAS.md         # Comparativa de 6 técnicas
+│   ├── Anteproyecto-RITMO.md # Documento del TFG
+│   ├── RITMO.md            # Documentación general RITMO
+│   ├── SOTA.md             # Estado del arte
+│   └── apuntes_julio.md    # Apuntes técnicos
 │
 ├── cache/                   # Cache de parámetros entrenados
 │   └── hmm_*.pth           # Parámetros HMM por dataset
@@ -140,7 +145,6 @@ RITMO/
 ├── run.py                  # Script principal de ejecución
 ├── requirements.txt        # Dependencias Python (DESACTUALIZADO)
 ├── environment.yml         # Especificación Conda (USAR ESTE)
-├── Anteproyecto-RITMO.md  # Documento del TFG
 ├── README.md               # Información del proyecto
 └── CLAUDE.md               # Esta guía de desarrollo
 ```
@@ -300,46 +304,35 @@ embedding_table = emb_gen.get_embedding_table()  # [K, d_model]
 
 ## Notebooks de Validación
 
-### RITMO Pipeline Validation
-**Archivo:** `notebooks/RITMO_pipeline_validation.ipynb`
+### Pipeline Validation
+**Archivo:** `notebooks/pipeline_RITMO_etth2.ipynb`
 
-Notebook de validación exhaustiva del pipeline RITMO en 4 fases:
+Validación exhaustiva del pipeline RITMO en 4 fases (RevIN, Baum-Welch, Viterbi, Embeddings).
+Auto-save PNGs en `notebooks/fase*.png`.
 
-1. **Fase 1 - RevIN**: Normalización reversible con MSE < 1e-12
-2. **Fase 2 - Baum-Welch**: Convergencia EM con tracking de log-likelihoods
-3. **Fase 3 - Viterbi**: Tokenización óptima con ratio compresión 27x
-4. **Fase 4 - Embeddings**: Visualización embedding space μ-σ + matriz A
+### K Sweep
+**Archivo:** `notebooks/k_sweep.ipynb`
 
-**Convenciones:**
-- Auto-save PNG en `notebooks/` (sin PDF)
-- Visualizaciones profesionales con offsets y flechas
-- Cache HMM en `cache/hmm_etth1_K5.pth`
+Notebook principal de experimentación. Entrena caches HMM y corre experiments secuencialmente.
+Resumible: si paras y vuelves, salta lo ya hecho (caches en disco, metrics en disco).
+- Celda 1: Configuración (K_VALUES, DATASETS, HMM_MODELS)
+- Celda 2: Entrenar caches Baum-Welch por dataset x K
+- Celda 3: Correr experiments por dataset x K x modelo HMM
+- Celda 4: Tabla resumen con ranking por dataset
 
 ### Notebooks de Técnicas
-**Archivos:** `tecnicas/Electricity_tokenization.ipynb`, `tecnicas/ETTh2_tokenization.ipynb`
-
-Notebooks comparativos de 6 técnicas de tokenización:
-
-1. **HMM (RITMO)** - Propuesta del TFG: estados ocultos con Viterbi
-2. **Discretización** - Símbolos discretos (ej: SAX, VQ-VAE)
-3. **Text-based** - Serialización a texto (ej: LLMTime)
-4. **Patching** - Segmentación en patches (ej: PatchTST)
-5. **Descomposición** - Trend + seasonal (ej: DLinear, Autoformer)
-6. **Foundation** - Pre-entrenamiento masivo (ej: MOMENT)
-
-**Convenciones:**
-- Auto-save PNG en cada celda de visualización
-- Figuras exportadas a `tecnicas/figures/`
-- Nombres: `{tecnica}_{dataset}.png`
+**Archivo:** `tecnicas/ETTh2_tokenization.ipynb` — comparación visual de 6 técnicas
+**Archivo:** `tecnicas/comparacion_metricas.ipynb` — métricas intrínsecas de tokenización
 
 ## Técnicas de Tokenización
 
 ### 1. HMM - RITMO (Propuesta del TFG)
-**Archivo:** `hmm/baum_welch.py`, `hmm/viterbi.py`
+**Archivo:** `hmm/baum_welch.py`, `hmm/viterbi.py`, `hmm/forward_backward.py`
 
-- Vocabulario: K=5 estados ocultos
-- Compresión: 27x vía run-length encoding
+- Vocabulario: K estados ocultos (K sweep: 3-10 por dataset)
+- Modelos: hmm_soft (gamma posteriors), hmm_soft_residual (gamma + valores crudos)
 - Embeddings: [μ_k, σ_k, A[k,:]] interpretables
+- Forward-backward batch optimizado (15-20x speedup)
 
 ### 2. Discretización
 **Archivo:** `tecnicas/discretization.py`
@@ -737,13 +730,11 @@ MSPE = Mean Squared Percentage Error
 
 ### Documentación Interna
 
-- **Anteproyecto TFG**: `Anteproyecto-RITMO.md` - Metodología completa
-- **Validación Pipeline**: `md/RITMO_VALIDACION.md` - Validación 4 fases con métricas
-- **Comparativa Técnicas**: `md/TECNICAS.md` - Análisis técnico de 6 técnicas
+- **Anteproyecto TFG**: `md/Anteproyecto-RITMO.md` - Metodología completa
+- **RITMO**: `md/RITMO.md` - Documentación general
+- **SOTA**: `md/SOTA.md` - Estado del arte
 - **README Original**: `README.md` - Información Time-Series-Library
 - **Environment**: `environment.yml` - Especificación completa del entorno
-
-**Nota sobre documentación:** Los archivos en `md/` usan prosa técnica densa (1-2 líneas por concepto) en lugar de bullet points, maximizando densidad informativa manteniendo accesibilidad.
 
 ### Recursos Externos
 
