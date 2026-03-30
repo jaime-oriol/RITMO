@@ -162,6 +162,8 @@ if __name__ == '__main__':
                         help='Tokenization technique for Plan A, options:[discretization, text_based, patching, decomposition, foundation, hmm, hmm_soft, hmm_soft_residual]')
     parser.add_argument('--hmm_k', type=int, default=5,
                         help='Number of HMM states (K) for hmm/hmm_soft techniques')
+    parser.add_argument('--hmm_cache_path', type=str, default='',
+                        help='Override HMM cache path (for zero-shot: use cache from another dataset)')
 
     args = parser.parse_args()
     if torch.cuda.is_available() and args.use_gpu:

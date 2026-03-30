@@ -132,7 +132,7 @@ class Exp_Plan_A(Exp_Basic):
             # EmbeddingGenerator con parámetros HMM
             # Cache debe estar en ./cache/hmm_{data}_{K}.pth
             hmm_k = getattr(self.args, 'hmm_k', 5)
-            cache_path = f'./cache/hmm_{self.args.data.lower()}_K{hmm_k}.pth'
+            cache_path = getattr(self.args, 'hmm_cache_path', '') or f'./cache/hmm_{self.args.data.lower()}_K{hmm_k}.pth'
             if not os.path.exists(cache_path):
                 raise FileNotFoundError(f"Cache HMM no encontrado: {cache_path}. Ejecutar primero entrenamiento HMM.")
 
