@@ -1,5 +1,7 @@
 # CLAUDE.md - Guía de Desarrollo RITMO
 
+No vuelvas a leer archivos ya leídos en esta sesión a menos que te lo pida. Minimiza las llamadas a herramientas y trabaja con lo que ya tienes en contexto.
+
 ## Checkpoint de referencia
 
 - Commit `c302807` (---CLEAN CHECKPOINT---): snapshot con todos los resultados experimentales previos (v0/v1/v2/v3, K sweeps parciales en Weather/ETTh1/ETTh2/ECL, 68 results, 75 checkpoints, caches HMM). Consultar este commit para recuperar cualquier resultado anterior.
