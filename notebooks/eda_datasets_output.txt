@@ -1,0 +1,152 @@
+====================================================================================================
+EDA REPRODUCIBLE Y EXHAUSTIVO — TFG RITMO
+====================================================================================================
+
+Generado por: notebooks/eda_datasets.py
+Pipeline: estructura -> integridad -> sentinels -> descriptivos -> ADF (serie completa)
+          -> ACF/periodicidades -> splits TSLib -> stats por partición -> resumen
+
+----------------------------------------------------------------------------------------------------
+1. ESTRUCTURA Y VALIDACIÓN DE INTEGRIDAD
+----------------------------------------------------------------------------------------------------
+Dataset      Shape          Vars   Target   Freq       Nulls(pandas)   Tipos numéricos
+ETTh1        (17420, 8)     7      OT       horaria    0               float64
+ETTh2        (17420, 8)     7      OT       horaria    0               float64
+Weather      (52696, 22)    21     OT       10 min     0               float64
+Electricity  (26304, 322)   321    OT       horaria    0               float64
+Traffic      (17544, 863)   862    OT       horaria    0               float64
+Exchange     (7588, 9)      8      OT       diaria     0               float64
+
+----------------------------------------------------------------------------------------------------
+2. DETECCIÓN DE VALORES SENTINEL ENCUBIERTOS
+----------------------------------------------------------------------------------------------------
+  Weather       -> 50 valores '-9999.0' (0.095% del dataset)
+
+Sentinels buscados: [-9999.0, -999.0, -99.0, 9999.0, 999.0]
+Nota: pandas reporta 0 nulos en TODOS los datasets, pero los sentinels sí se han detectado
+manualmente y son tratados como missing por convención del repositorio MPI Biogeochemistry.
+
+----------------------------------------------------------------------------------------------------
+3. ESTADÍSTICOS DESCRIPTIVOS DEL TARGET (.describe equivalente)
+----------------------------------------------------------------------------------------------------
+Dataset             min        q05        q25     median       mean        q75        q95        max        std
+ETTh1            -4.080      2.673      6.964     11.396     13.325     18.079     31.515     46.007      8.567
+ETTh2            -2.647      8.484     16.469     26.577     26.609     35.586     46.085     58.877     11.888
+Weather       -9999.000    402.900    415.500    423.200    417.799    437.100    464.700    524.200    321.567
+Electricity       0.000   2597.150   2920.000   3271.000   3335.884   3632.000   4419.850   6035.000    552.744
+Traffic           0.000      0.004      0.013      0.034      0.032      0.047      0.061      0.217      0.019
+Exchange          0.393      0.440      0.566      0.669      0.654      0.735      0.833      0.882      0.115
+
+Dataset           rango         CV       skew   kurtosis   n_unique
+ETTh1            50.087      0.643      0.968      0.778        669
+ETTh2            61.523      0.447      0.099     -0.811       1628
+Weather       10523.200      0.770    -32.254   1041.924       1111
+Electricity    6035.000      0.166      0.768      0.769       2714
+Traffic           0.217      0.617      0.192     -0.237        838
+Exchange          0.489      0.176     -0.215     -0.691       5233
+
+----------------------------------------------------------------------------------------------------
+4. ESTACIONARIEDAD — Augmented Dickey-Fuller sobre SERIE COMPLETA (sin submuestreo)
+----------------------------------------------------------------------------------------------------
+Dataset          ADF stat        p-value    crit 5%   lag    N obs   N limpia  Conclusión
+ETTh1             -3.4880     8.3016e-03    -2.8617    44    17375      17420  ESTACIONARIA
+ETTh2             -3.5971     5.8161e-03    -2.8617    42    17377      17420  ESTACIONARIA
+Weather          -28.6887     0.0000e+00    -2.8616    39    52606      52646  ESTACIONARIA
+Electricity      -14.0536     3.1453e-26    -2.8617    49    26254      26304  ESTACIONARIA
+Traffic          -11.5396     3.6616e-21    -2.8617    44    17499      17544  ESTACIONARIA
+Exchange          -1.7282     4.1665e-01    -2.8619     3     7584       7588  NO estacionaria
+
+Hipótesis nula H0: la serie tiene una raíz unitaria (NO es estacionaria).
+Criterio: si p-value < 0.05, se rechaza H0 y se concluye que la serie ES estacionaria.
+Si ADF stat < crit 5%, también se rechaza H0 con confianza del 95%.
+
+----------------------------------------------------------------------------------------------------
+5. AUTOCORRELACIÓN Y PERIODICIDADES DOMINANTES
+----------------------------------------------------------------------------------------------------
+Dataset        ACF(1)   ACF(24)   ACF(48)   ACF(144)   ACF(168)   ACF(336)
+ETTh1           0.994     0.940     0.900      0.856      0.856      0.822
+ETTh2           0.994     0.933     0.884      0.825      0.823      0.798
+Weather         0.990     0.559     0.065      0.711      0.402     -0.038
+Electricity     0.952     0.734     0.559      0.657      0.842      0.811
+Traffic         0.942     0.918     0.868      0.903      0.948      0.931
+Exchange        0.999     0.982     0.964      0.872      0.848      0.701
+
+Interpretación de los lags clave (frecuencia horaria/10min):
+  - ETTh / Electricity / Traffic (horaria):
+      lag 24  -> ciclo diario (24 horas)
+      lag 168 -> ciclo semanal (24*7 horas)
+      lag 336 -> ciclo bisemanal
+  - Weather (cada 10 min): lag 144 -> ciclo diario, lag 1008 -> ciclo semanal
+  - Exchange (diaria): lag 24 -> 24 días, lag 168 -> 168 días
+
+Top picos detectados en la ACF (lag, valor) para cada dataset:
+  ETTh1       : (22,0.94), (47,0.90), (72,0.88), (96,0.87), (120,0.86), (168,0.86), (144,0.86), (192,0.85)
+  ETTh2       : (24,0.93), (48,0.88), (72,0.85), (96,0.84), (120,0.83), (144,0.83), (168,0.82), (192,0.82)
+  Weather     : (144,0.71), (288,0.64), (431,0.59)
+  Electricity : (168,0.84), (336,0.81), (24,0.73), (144,0.66), (192,0.65), (312,0.63), (360,0.62), (480,0.60)
+  Traffic     : (168,0.95), (336,0.93), (24,0.92), (144,0.90), (192,0.90), (312,0.89), (360,0.89), (480,0.87)
+  Exchange    : (sin picos > 0.1)
+
+----------------------------------------------------------------------------------------------------
+6. SPLITS CRONOLÓGICOS APLICADOS POR TSLib
+----------------------------------------------------------------------------------------------------
+Dataset      Esquema                                       Train      Val     Test   Cob.%
+ETTh1        ETT canonical (12m train / 4m val / 4m test)     8640     2880     2880    82.7
+ETTh2        ETT canonical (12m train / 4m val / 4m test)     8640     2880     2880    82.7
+Weather      Custom (70% / 10% / 20%)                      36887     5269    10540   100.0
+Electricity  Custom (70% / 10% / 20%)                      18412     2631     5261   100.0
+Traffic      Custom (70% / 10% / 20%)                      12280     1755     3509   100.0
+Exchange     Custom (70% / 10% / 20%)                       5311      759     1518   100.0
+
+Verificado en data_provider/data_loader.py:
+  - Dataset_ETT_hour (líneas 19-130): split fijo en MESES = 12/4/4 (= 8640/2880/2880 horas)
+  - Dataset_Custom (líneas 133+):     split en porcentajes = 70%/10%/20%
+  - Particiones cronológicas estrictas (validación y test posteriores al entrenamiento)
+  - StandardScaler ajustado SOLO sobre train, aplicado a las 3 particiones
+
+----------------------------------------------------------------------------------------------------
+7. ANÁLISIS DE DISTRIBUTION SHIFT POR PARTICIÓN (train / val / test)
+----------------------------------------------------------------------------------------------------
+Dataset        Mean train     Mean val    Mean test   |Δμ| t-test    %Δμ rel    %Δσ rel
+ETTh1              17.128       15.578        4.850        12.278      71.68      65.69
+ETTh2              26.872       36.130       14.407        12.465      46.39      38.48
+Weather           425.184      426.198      437.203        12.019       2.83      10.55
+Electricity      3361.176     3082.555     3374.058        12.882       0.38       2.19
+Traffic             0.029        0.035        0.037         0.008      25.63      34.70
+Exchange            0.605        0.781        0.764         0.160      26.39      25.25
+
+Interpretación: %Δμ rel mide cuánto cambia la media del target entre train y test
+(en porcentaje de la media de train). Valores >10% sugieren distribution shift acusado.
+
+----------------------------------------------------------------------------------------------------
+8. RESUMEN ESTRUCTURADO PARA LA SECCIÓN 4.4 DEL TFG
+----------------------------------------------------------------------------------------------------
+  - Datasets analizados: 6 / 6
+  - Tipos numéricos: TODOS los targets son float64
+  - Valores nulos detectados por pandas (.isnull): 0
+  - Valores sentinel detectados manualmente: 50
+
+  - Series ESTACIONARIAS (ADF p<0.05, serie completa): 5
+    ETTh1, ETTh2, Weather, Electricity, Traffic
+  - Series NO estacionarias: 1
+    Exchange
+
+  - Distribution shift train->test (Δ relativo de la media):
+      ETTh1       :  71.68%  (ALTO)
+      ETTh2       :  46.39%  (ALTO)
+      Weather     :   2.83%  (bajo)
+      Electricity :   0.38%  (bajo)
+      Traffic     :  25.63%  (ALTO)
+      Exchange    :  26.39%  (ALTO)
+
+  - Periodicidades dominantes (lag con mayor pico ACF):
+      ETTh1       : pico principal en lag   22 (ACF=0.941) 
+      ETTh2       : pico principal en lag   24 (ACF=0.933) diario
+      Weather     : pico principal en lag  144 (ACF=0.711) diario
+      Electricity : pico principal en lag  168 (ACF=0.842) semanal
+      Traffic     : pico principal en lag  168 (ACF=0.948) semanal
+      Exchange    : sin picos significativos
+
+====================================================================================================
+FIN DEL EDA
+====================================================================================================
