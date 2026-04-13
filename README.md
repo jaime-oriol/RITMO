@@ -74,69 +74,141 @@ En los 5 escenarios, HMM supera siempre a discretization y text_based. En horizo
 
 ## Estructura del repositorio
 
+> Nota: `dataset/`, `md/`, `memoria/` y artefactos de entorno (`__pycache__/`, `.ipynb_checkpoints/`, `.venv/`, IDE configs) quedan fuera del repo via `.gitignore`.
+
 ```
 RITMO/
-├── hmm/                     # Modulo HMM (implementacion propia)
-│   ├── baum_welch.py        #   Entrenamiento EM vectorizado
-│   ├── forward_backward.py  #   Forward-backward + version batch
-│   ├── viterbi.py           #   Decodificacion Viterbi vectorizada
-│   ├── gaussian_emissions.py#   Emisiones gaussianas en log-space
-│   ├── checkpoint.py        #   Guardado/carga parametros (.pth)
-│   └── utils.py             #   log-normalize, init k-means
+├── hmm/                           # Modulo HMM (implementacion propia, vectorizada)
+│   ├── __init__.py
+│   ├── baum_welch.py              #   Entrenamiento EM con init k-means
+│   ├── forward_backward.py        #   Forward-backward + version batch [B,T,K]
+│   ├── viterbi.py                 #   Decodificacion Viterbi + version batch
+│   ├── gaussian_emissions.py      #   Emisiones gaussianas en log-space
+│   ├── checkpoint.py              #   save_hmm_params / load_hmm_params
+│   └── utils.py                   #   log_normalize, initialize_kmeans, LOG_EPS
 │
-├── embeddings/              # Generacion de embeddings
-│   └── embedding_generator.py  # 6 variantes: hard, soft, soft_residual,
-│                               # augmented, split, patched
+├── embeddings/                    # Generacion de embeddings desde HMM
+│   ├── __init__.py
+│   ├── embedding_generator.py     #   6 variantes: hard, soft, soft_residual,
+│   │                              #                augmented, split, patched
+│   └── technique_embeddings.py    #   Embeddings para tecnicas baseline
 │
-├── tecnicas/                # 5 tecnicas baseline de tokenizacion
-│   ├── discretization.py    #   SAX (Lin et al., 2007)
-│   ├── text_based.py        #   LLMTime (Gruver et al., 2023)
-│   ├── patching.py          #   PatchTST (Nie et al., 2023)
-│   ├── decomposition.py     #   Autoformer/DLinear (Wu et al., 2021)
-│   ├── foundation.py        #   MOMENT (Goswami et al., 2024)
-│   └── metrics.py           #   Metricas intrinsecas de tokenizacion
+├── tecnicas/                      # 5 tecnicas de tokenizacion deterministas
+│   ├── __init__.py
+│   ├── discretization.py          #   SAX (Lin et al., 2007)
+│   ├── text_based.py              #   LLMTime (Gruver et al., 2023)
+│   ├── patching.py                #   PatchTST (Nie et al., 2023)
+│   ├── decomposition.py           #   Autoformer/DLinear (Wu et al., 2021)
+│   ├── foundation.py              #   MOMENT (Goswami et al., 2024)
+│   ├── metrics.py                 #   Metricas intrinsecas de tokenizacion
+│   ├── ETTh2_tokenization.ipynb   #   Visualizaciones de las 6 tecnicas en ETTh2
+│   ├── comparacion_metricas.ipynb #   Comparacion de metricas intrinsecas
+│   └── figures/                   #   Figuras exportadas
 │
-├── models/                  # Backbones
-│   ├── TransformerCommon.py #   Backbone compartido Plan A (FIJO)
-│   ├── DLinear.py           #   Baseline (Zeng et al., 2023)
-│   ├── PatchTST.py          #   Baseline (Nie et al., 2023)
-│   ├── TimeMixer.py         #   Baseline (S. Wang et al., 2024)
-│   └── TimeXer.py           #   Baseline (Y. Wang et al., 2024)
+├── models/                        # Backbones neuronales
+│   ├── __init__.py
+│   ├── TransformerCommon.py       #   Backbone compartido Plan A (FIJO)
+│   ├── DLinear.py                 #   Baseline (Zeng et al., 2023)
+│   ├── PatchTST.py                #   Baseline (Nie et al., 2023)
+│   ├── TimeMixer.py               #   Baseline (S. Wang et al., 2024)
+│   └── TimeXer.py                 #   Baseline (Y. Wang et al., 2024)
 │
-├── layers/                  # Componentes compartidos
-│   ├── StandardNorm.py      #   RevIN (Kim et al., 2022)
-│   ├── Transformer_EncDec.py
-│   ├── SelfAttention_Family.py
-│   └── Embed.py
+├── layers/                        # Componentes de red compartidos
+│   ├── __init__.py
+│   ├── StandardNorm.py            #   RevIN (Kim et al., 2022)
+│   ├── Transformer_EncDec.py      #   Encoder / EncoderLayer
+│   ├── SelfAttention_Family.py    #   FullAttention, AttentionLayer
+│   ├── Autoformer_EncDec.py       #   series_decomp, moving_avg
+│   └── Embed.py                   #   PatchEmbedding, DataEmbedding_wo_pos, etc.
 │
-├── exp/                     # Clases de experimentacion
-│   ├── exp_plan_a.py        #   Plan A: comparacion 6+ tecnicas
-│   ├── exp_long_term_forecasting.py
-│   └── exp_basic.py
+├── exp/                           # Clases de experimentacion
+│   ├── __init__.py
+│   ├── exp_basic.py               #   Clase base (device, registro de modelos)
+│   ├── exp_plan_a.py              #   Plan A: comparacion controlada 6+ tecnicas
+│   └── exp_long_term_forecasting.py  # Plan B: baselines SOTA
 │
-├── data_provider/           # Carga de datos
-│   ├── data_factory.py      #   Factory con ETTh1/h2, Weather, ECL, Traffic, Exchange
-│   └── data_loader.py
+├── data_provider/                 # Carga y procesamiento de datos
+│   ├── __init__.py
+│   ├── data_factory.py            #   Factory: ETTh1/h2, Weather, ECL,
+│   │                              #            Traffic, Exchange, custom
+│   └── data_loader.py             #   Dataset classes + StandardScaler
 │
-├── notebooks/               # Notebooks de experimentacion
-│   ├── pipeline_RITMO_etth2.ipynb   # Validacion 4 fases
-│   ├── k_sweep.ipynb                # Barrido K por dataset
-│   └── visualizations.ipynb         # Agregacion de resultados
+├── utils/                         # Utilidades generales
+│   ├── __init__.py
+│   ├── metrics.py                 #   MSE, MAE, RMSE, MAPE, MSPE, CORR
+│   ├── tools.py                   #   EarlyStopping, adjust_learning_rate, visual
+│   ├── revin.py                   #   RevINNormalizer (alternativa)
+│   ├── timefeatures.py            #   Codificacion temporal
+│   ├── augmentation.py            #   Data augmentation
+│   ├── masking.py                 #   Mascaras para atencion / imputacion
+│   ├── dtw_metric.py              #   Dynamic Time Warping
+│   └── print_args.py              #   Pretty-print de argumentos
 │
-├── scripts/                 # Scripts de ejecucion
-│   ├── plan_a/              #   Scripts Plan A
-│   └── long_term_forecast/  #   Scripts baselines (Plan B)
+├── notebooks/                     # Notebooks de experimentacion
+│   ├── pipeline_RITMO_etth2.ipynb #   Validacion 4 fases del pipeline
+│   ├── k_sweep.ipynb              #   Barrido K por dataset (caches HMM)
+│   ├── visualizations.ipynb       #   Agregacion de resultados Plan A
+│   ├── final_results.ipynb        #   Compilacion final de metricas
+│   ├── zero_shot.ipynb            #   Transfer zero-shot a Traffic/Exchange
+│   ├── eda_datasets.ipynb         #   EDA de los 6 datasets
+│   ├── eda_datasets.py            #   Script EDA exportable
+│   ├── patch_savefig_to_vector.py #   Convertir figuras a formato vectorial
+│   ├── fix_svgs_maxquality.py     #   Optimizacion SVG
+│   ├── fase1_revin_etth2.{pdf,png,svg}       # Fase 1: RevIN
+│   ├── fase2_baum_welch_etth2.{pdf,png,svg}  # Fase 2: Baum-Welch
+│   ├── fase3_viterbi_etth2.{pdf,png,svg}     # Fase 3: Viterbi
+│   ├── fase4_embeddings_etth2.{pdf,png,svg}  # Fase 4: Embeddings
+│   ├── figures/                   #   Figuras Plan A
+│   └── figures_eda/               #   Figuras EDA
 │
-├── cache/                   # HMM entrenados: hmm_{dataset}_K{k}.pth
-├── results/                 # metrics.npy, pred.npy, true.npy por experimento
-├── test_results/            # PDFs de visualizacion de predicciones
-├── utils/                   # Metricas (MSE, MAE, CORR), EarlyStopping, RevIN
-├── md/                      # Documentacion (Anteproyecto, SOTA, apuntes)
-├── pic/                     # Imagenes README
-├── dataset/                 # Datasets (no incluidos, descargar aparte)
+├── scripts/                       # Scripts shell de ejecucion
+│   ├── plan_a/
+│   │   └── test_hmm_soft.sh       #   Barrido K para hmm_soft (Plan A)
+│   └── long_term_forecast/        # Baselines SOTA (Plan B)
+│       ├── ETT_script/            #   7 scripts (PatchTST, DLinear, TimeMixer,
+│       │                          #              TimeXer) sobre ETTh1 y ETTh2
+│       ├── ECL_script/            #   4 scripts (DLinear, PatchTST, TimeMixer, TimeXer)
+│       ├── Weather_script/        #   3 scripts (PatchTST, TimeMixer, TimeXer)
+│       ├── Traffic_script/        #   Scripts Traffic
+│       └── Exchange_script/       #   Scripts Exchange
 │
-├── run.py                   # Entry point principal
-├── environment.yml          # Entorno Conda
+├── cache/                         # Parametros HMM entrenados (32 archivos)
+│   └── hmm_{etth1,etth2,weather,custom}_K{3-10}.pth
+│
+├── results/                       # Metricas y predicciones por experimento
+│   └── plan_a_{dataset}_..._{technique}_{K}_0/
+│       ├── metrics.npy            #   np.array([MAE, MSE, RMSE, MAPE, MSPE])
+│       ├── pred.npy               #   Predicciones [N, pred_len, 1]
+│       └── true.npy               #   Ground truth [N, pred_len, 1]
+│
+├── test_results/                  # Visualizaciones de predicciones (PDFs)
+│   └── plan_a_{...}/*.pdf         #   Plots input + pred + ground truth
+│
+├── checkpoints/                   # Pesos de modelos entrenados (.pth)
+│
+├── referencias/                   # Papers organizados por categoria (PDFs)
+│   ├── 1-Tecnicas/                #   Discretizacion, Patching, Decomp,
+│   │                              #   Foundation models, Text-based
+│   ├── 2-Transformer-Baselines/   #   Informer, TimesNet, TimeMixer, TimeXer
+│   ├── 3-Surveys/                 #   Surveys LLMs + Time Series
+│   ├── 4-Preprocesamiento/        #   RevIN, Non-stationary Transformers
+│   ├── 5-HMM/                     #   Rabiner, Hamilton, Baum-Welch, sticky HDP-HMM
+│   ├── 6-Datasets/                #   Accuracy Law, Long-Short patterns
+│   └── 7-Evaluacion-token/        #   Metricas de evaluacion de tokenizacion
+│
+├── tutorial/                      # Tutorial TSLib original (referencia)
+│   ├── TimesNet_tutorial.ipynb
+│   └── {conv,dataset,fft,result}.png
+│
+├── pic/                           # Imagenes README
+│   ├── Pipeline-RITMO.png
+│   └── notebookLM.md
+│
+├── run.py                         # Entry point principal (CLI unificado TSLib)
+├── environment.yml                # Entorno Conda (USAR ESTE)
+├── requirements.txt               # Requirements pip (alternativa)
+├── result_plan_a.txt              # Log agregado de experimentos Plan A
+├── .gitignore
 └── README.md
 ```
 
@@ -230,7 +302,7 @@ jupyter notebook notebooks/visualizations.ipynb        # Agregacion resultados
 ## Configuracion experimental
 
 - Input: I = 96 timesteps
-- Horizontes: O = {96, 192, 336}
+- Horizontes: O = {96, 192, 336, 720}
 - Metricas: MSE, MAE (reportadas), RMSE/MAPE/MSPE disponibles
 - Modo: `features S` (univariado, columna `OT` en ETT / `MT_320` en ECL)
 - Split: 7:1:2 (train/val/test) estilo TSLib
@@ -275,4 +347,4 @@ Construido sobre [Time-Series-Library](https://github.com/thuml/Time-Series-Libr
 - Goswami, M. et al. (2024). *MOMENT: a family of open time-series foundation models*. ICML.
 - Lin, J. et al. (2007). *Experiencing SAX: a novel symbolic representation of time series*. DMKD.
 
-Ver `md/SOTA.md` para la revision completa del estado del arte.
+PDFs de las referencias bajo `referencias/` (7 categorias, 45+ papers).
