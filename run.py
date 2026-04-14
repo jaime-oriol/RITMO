@@ -8,6 +8,7 @@ from exp.exp_long_term_forecasting import Exp_Long_Term_Forecast
 # from exp.exp_anomaly_detection import Exp_Anomaly_Detection  # No disponible
 # from exp.exp_classification import Exp_Classification  # No disponible
 from exp.exp_plan_a import Exp_Plan_A
+from exp.exp_plan_b import Exp_Plan_B
 from utils.print_args import print_args
 import random
 import numpy as np
@@ -197,6 +198,8 @@ if __name__ == '__main__':
     #     Exp = Exp_Classification  # No disponible
     elif args.task_name == 'plan_a':
         Exp = Exp_Plan_A
+    elif args.task_name == 'plan_b':
+        Exp = Exp_Plan_B
     else:
         Exp = Exp_Long_Term_Forecast
 
