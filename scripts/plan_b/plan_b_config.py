@@ -7,12 +7,12 @@ Editable: cambia los valores aqui y lo aplica a train_hmm_caches.py y run_ritmo_
 # Semilla unica (fijada en los scripts y en run.py).
 SEED = 2021
 
-# Valores de K a barrer por dataset. ECL restringido por coste CPU (C=321 canales).
+# Valores de K a barrer por dataset (mismo rango que Plan A para comparacion directa).
 K_VALUES_BY_DATASET = {
-    'ETTh1':       [3, 4, 5, 6, 7, 8],
-    'ETTh2':       [3, 4, 5, 6, 7, 8],
-    'Weather':     [3, 4, 5, 6, 7, 8],
-    'Electricity': [3, 5, 8],  # sweep reducido; ECL es pesado en M
+    'ETTh1':       [3, 4, 5, 6, 7, 8, 9, 10],
+    'ETTh2':       [3, 4, 5, 6, 7, 8, 9, 10],
+    'Weather':     [3, 4, 5, 6, 7, 8, 9, 10],
+    'Electricity': [3, 4, 5, 6, 7, 8, 9, 10],
 }
 
 # Variantes HMM a evaluar (las ganadoras en Plan A).
