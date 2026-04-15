@@ -50,7 +50,7 @@ DATASETS = [
         'root': './dataset/electricity/', 'data_path': 'electricity.csv',
         'csv': 'dataset/electricity/electricity.csv',
         'C': 321, 'freq': 'h', 'batch_size': 4, 'train_epochs': 5,
-        'split_type': 'custom', 'hmm_chunk_size': 8,
+        'split_type': 'custom', 'hmm_chunk_size': 32,
     },
 ]
 
