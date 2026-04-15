@@ -122,7 +122,7 @@ def main():
             print(f"  TRAIN {cp}", flush=True)
             t_k = time.time()
             params = baum_welch_batch(
-                obs, K=K, max_iter=100, epsilon=1e-4,
+                obs, K=K, max_iter=2000, epsilon=1e-4,
                 random_state=SEED, chunk_size=ds['hmm_chunk_size'],
                 verbose=False,
             )
