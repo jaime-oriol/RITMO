@@ -270,7 +270,13 @@ class Exp_Plan_A(Exp_Basic):
                 tokens_list.append(torch.tensor(components, dtype=torch.float32))
 
             elif self.technique == 'foundation':
-                result = foundation_tokenize(serie_norm, patch_len=16, stride=16, mask_ratio=0.3)
+                # Masking reproducible por (seed global, idx de muestra en batch).
+                # Sin esto, np.random.RandomState(None) usa os.urandom -> no reproducible.
+                sample_seed = getattr(self.args, 'seed', 2021) + i
+                result = foundation_tokenize(
+                    serie_norm, patch_len=16, stride=16, mask_ratio=0.3,
+                    random_seed=sample_seed,
+                )
                 tokens_list.append(torch.tensor(result['patches'], dtype=torch.float32))
 
         return ('list', tokens_list)
