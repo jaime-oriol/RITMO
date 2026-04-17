@@ -31,3 +31,15 @@ memoria/
 *.log
 .mypy_cache/
 .pytest_cache/
+
+# Artefactos pesados y reproducibles (NO subir al repo)
+# Pesos de modelos entrenados: se regeneran re-entrenando.
+checkpoints/
+# Predicciones/ground truth por experimento (.npy de decenas de MB).
+# Se mantienen los metrics.npy (5 numeros) y los CSVs agregados.
+results/**/pred.npy
+results/**/true.npy
+# PDFs de visualizacion por-muestra (se regeneran al correr test).
+test_results/
+# Logs de ejecucion.
+logs/
