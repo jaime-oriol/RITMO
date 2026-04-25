@@ -1,0 +1,183 @@
+{
+  "discretization": {
+    "compression_ratio": 1.0,
+    "mse_reconstruction": 0.14430739188910058,
+    "acf_retention": 0.9998946957454632,
+    "vocabulary_entropy": 0.9753138896723543,
+    "bigram_entropy": 0.6717696612478471,
+    "token_persistence": 4.123951224969236,
+    "top_k_coverage": 0.7325303819444444
+  },
+  "text_based": {
+    "compression_ratio": 0.09479652844744456,
+    "mse_reconstruction": 4.097687799352964e-05,
+    "acf_retention": 0.9999999180189613
+  },
+  "patching": {
+    "compression_ratio": 16.0,
+    "mse_reconstruction": 6.424144451643993e-16,
+    "acf_retention": 0.9999999999999118
+  },
+  "decomposition": {
+    "compression_ratio": 18432.0,
+    "mse_reconstruction": 8.590129701853214e-35,
+    "acf_retention": 1.0
+  },
+  "foundation": {
+    "compression_ratio": 16.0,
+    "mse_reconstruction": 0.30533765397809715,
+    "acf_retention": 0.9962458690782756
+  },
+  "hmm": {
+    "compression_ratio": 1.0,
+    "mse_reconstruction": 0.13978393913516374,
+    "acf_retention": 0.9988562385393799,
+    "vocabulary_entropy": 0.986511747174744,
+    "bigram_entropy": 0.5796330396399421,
+    "token_persistence": 18.240475012370112,
+    "top_k_coverage": 1.0,
+    "_variant": "hmm_soft_residual",
+    "_K": 4
+  },
+  "_robustness": {
+    "discretization": {
+      "baseline_mse": 0.1401234563764237,
+      "baseline_acf": 0.9998776771832094,
+      "by_level": {
+        "0.1": {
+          "mse_change_rel": -0.010057181840951933,
+          "acf_change_rel": -0.00011644594945052309,
+          "mse_change_std": 0.008981170762679633,
+          "acf_change_std": 2.262235549038309e-05
+        },
+        "0.5": {
+          "mse_change_rel": -0.284836840901268,
+          "acf_change_rel": -0.0007520520058913282,
+          "mse_change_std": 0.012534806152466889,
+          "acf_change_std": 6.801781978754625e-05
+        }
+      },
+      "summary": {
+        "avg_mse_change_rel": -0.14744701137110997,
+        "avg_acf_change_rel": -0.00043424897767092564
+      }
+    },
+    "text_based": {
+      "baseline_mse": 3.886371339327742e-05,
+      "baseline_acf": 0.9999999521662097,
+      "by_level": {
+        "0.1": {
+          "mse_change_rel": 0.04509099694695697,
+          "acf_change_rel": 1.0058060680643688e-08,
+          "mse_change_std": 0.006139229293026484,
+          "acf_change_std": 1.4541186798029629e-08
+        },
+        "0.5": {
+          "mse_change_rel": 0.06220533502568488,
+          "acf_change_rel": -7.4346230138758405e-09,
+          "mse_change_std": 0.005965069404161459,
+          "acf_change_std": 6.828996266437733e-09
+        }
+      },
+      "summary": {
+        "avg_mse_change_rel": 0.053648165986320925,
+        "avg_acf_change_rel": 1.311718833383924e-09
+      }
+    },
+    "patching": {
+      "baseline_mse": 7.32941134686858e-05,
+      "baseline_acf": 0.9999999968688495,
+      "by_level": {
+        "0.1": {
+          "mse_change_rel": 0.22911360554076943,
+          "acf_change_rel": -3.586822553912863e-09,
+          "mse_change_std": 0.23522197074764745,
+          "acf_change_std": 2.133741182620658e-09
+        },
+        "0.5": {
+          "mse_change_rel": 3.4661283798916256,
+          "acf_change_rel": -9.011707153189912e-08,
+          "mse_change_std": 2.274646280615355,
+          "acf_change_std": 6.216804896671954e-08
+        }
+      },
+      "summary": {
+        "avg_mse_change_rel": 1.8476209927161975,
+        "avg_acf_change_rel": -4.685194704290599e-08
+      }
+    },
+    "decomposition": {
+      "baseline_mse": 1.495743148833309e-34,
+      "baseline_acf": 1.0,
+      "by_level": {
+        "0.1": {
+          "mse_change_rel": -0.007624798530474976,
+          "acf_change_rel": 0.0,
+          "mse_change_std": 0.03943600579695126,
+          "acf_change_std": 0.0
+        },
+        "0.5": {
+          "mse_change_rel": 0.7734251035974662,
+          "acf_change_rel": -3.700743415417188e-17,
+          "mse_change_std": 0.06853622900608228,
+          "acf_change_std": 5.233641528945917e-17
+        }
+      },
+      "summary": {
+        "avg_mse_change_rel": 0.38290015253349563,
+        "avg_acf_change_rel": -1.850371707708594e-17
+      }
+    },
+    "foundation": {
+      "baseline_mse": 0.31505195610531966,
+      "baseline_acf": 0.9965820626291042,
+      "by_level": {
+        "0.1": {
+          "mse_change_rel": 0.0075228269802570975,
+          "acf_change_rel": 0.00011211557052501164,
+          "mse_change_std": 0.0006308356849245804,
+          "acf_change_std": 9.35444105467676e-05
+        },
+        "0.5": {
+          "mse_change_rel": 0.2331022992215588,
+          "acf_change_rel": 0.0012268045151516659,
+          "mse_change_std": 0.014802983747291425,
+          "acf_change_std": 0.0004134479705862099
+        }
+      },
+      "summary": {
+        "avg_mse_change_rel": 0.12031256310090796,
+        "avg_acf_change_rel": 0.0006694600428383388
+      }
+    },
+    "hmm": {
+      "baseline_mse": 0.1524259537173713,
+      "baseline_acf": 0.9991743036693869,
+      "by_level": {
+        "0.1": {
+          "mse_change_rel": 0.03381181712126918,
+          "acf_change_rel": -0.00022894500442625977,
+          "mse_change_std": 0.004822394340501746,
+          "acf_change_std": 0.0001450944196225453
+        },
+        "0.5": {
+          "mse_change_rel": 1.0303286097410682,
+          "acf_change_rel": -0.008942840360028551,
+          "mse_change_std": 0.003985443006490271,
+          "acf_change_std": 0.0003369666093371688
+        }
+      },
+      "summary": {
+        "avg_mse_change_rel": 0.5320702134311687,
+        "avg_acf_change_rel": -0.004585892682227405
+      }
+    }
+  },
+  "_token_distance": {
+    "discretization_edit": 0.5322843190450353,
+    "hmm_edit": 0.22002170374389582,
+    "patching_l2": 1.9802789688110352,
+    "decomposition_l2": 25.40211368532393,
+    "foundation_l2": 1.9802789688110352
+  }
+}
