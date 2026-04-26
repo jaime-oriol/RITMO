@@ -1,9 +1,0 @@
-,compression_ratio,compression_ratio,mse_reconstruction,mse_reconstruction,acf_retention,acf_retention,vocabulary_entropy,vocabulary_entropy,bigram_entropy,bigram_entropy,token_persistence,token_persistence,top_k_coverage,top_k_coverage
-,mean,std,mean,std,mean,std,mean,std,mean,std,mean,std,mean,std
-technique,,,,,,,,,,,,,,
-decomposition,9060.0,6017.729442,0.0,0.0,1.0,0.0,,,,,,,,
-discretization,1.0,0.0,0.140536,0.016524,0.999777,8.5e-05,0.987894,0.008765,0.758222,0.057677,2.720871,0.904469,0.699297,0.03049
-foundation,16.0,0.0,0.303859,0.010561,0.99773,0.001018,,,,,,,,
-hmm,1.0,0.0,0.0947,0.056942,0.999496,0.000419,0.987422,0.006487,0.697186,0.077935,7.990231,6.505632,0.846856,0.162129
-patching,16.0,0.0,0.0,0.0,1.0,0.0,,,,,,,,
-text_based,0.094993,0.000216,4.1e-05,1e-06,1.0,0.0,,,,,,,,
