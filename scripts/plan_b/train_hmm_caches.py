@@ -80,7 +80,29 @@ def parse_args():
                     help='Override manual de K values (aplicado a todos los datasets).')
     ap.add_argument('--skip-electricity', action='store_true',
                     help='Salta Electricity (util si el sweep completo es inviable en CPU).')
+    ap.add_argument('--workers', type=int, default=1,
+                    help='Procesos paralelos por (K) dentro de cada dataset. Default 1 (secuencial).')
     return ap.parse_args()
+
+
+def _train_one_K(args_tuple):
+    """Worker para multiprocessing.Pool. Entrena un (dataset, K) y guarda en disco."""
+    name, obs, K, chunk_size, cp = args_tuple
+    if Path(cp).exists():
+        return (K, 'SKIP', None, 0.0)
+    t_k = time.time()
+    params = baum_welch_batch(
+        obs, K=K, max_iter=2000, epsilon=1e-4,
+        random_state=SEED, chunk_size=chunk_size,
+        verbose=False,
+    )
+    save_hmm_params(params, cp)
+    dt = time.time() - t_k
+    return (K, 'OK', {
+        'll': float(params['log_likelihood']),
+        'iters': int(params['n_iter']),
+        'converged': bool(params['converged']),
+    }, dt)
 
 
 def main():
@@ -94,7 +116,7 @@ def main():
         datasets = [d for d in datasets if d['name'] != 'Electricity']
 
     total_start = time.time()
-    print(f"[plan_b-caches] Inicio. datasets={[d['name'] for d in datasets]}", flush=True)
+    print(f"[plan_b-caches] Inicio. datasets={[d['name'] for d in datasets]} workers={args.workers}", flush=True)
 
     for ds in datasets:
         name = ds['name']
@@ -114,23 +136,33 @@ def main():
               f"T_total={T} mean={obs.mean():.4f} std={obs.std():.4f} "
               f"({time.time()-t0:.1f}s loading)", flush=True)
 
+        # Lista de tareas (solo Ks que faltan)
+        tasks = [(name, obs, K, ds['hmm_chunk_size'], cache_path(name, K))
+                 for K in Ks if not Path(cache_path(name, K)).exists()]
         for K in Ks:
-            cp = cache_path(name, K)
-            if Path(cp).exists():
-                print(f"  SKIP {cp} (exists)", flush=True)
-                continue
-            print(f"  TRAIN {cp}", flush=True)
-            t_k = time.time()
-            params = baum_welch_batch(
-                obs, K=K, max_iter=2000, epsilon=1e-4,
-                random_state=SEED, chunk_size=ds['hmm_chunk_size'],
-                verbose=False,
-            )
-            save_hmm_params(params, cp)
-            print(f"    LL_tot={params['log_likelihood']:.2f}  iters={params['n_iter']}  "
-                  f"converged={params['converged']}  ({time.time()-t_k:.1f}s)", flush=True)
-            del params
-            gc.collect()
+            if Path(cache_path(name, K)).exists():
+                print(f"  SKIP {cache_path(name, K)} (exists)", flush=True)
+
+        if args.workers > 1 and len(tasks) > 1:
+            from multiprocessing import Pool
+            n = min(args.workers, len(tasks))
+            print(f"  Lanzando {len(tasks)} entrenamientos en {n} procesos paralelos...", flush=True)
+            with Pool(processes=n) as pool:
+                for K, status, info, dt in pool.imap_unordered(_train_one_K, tasks):
+                    if status == 'OK':
+                        print(f"    K={K} OK  LL={info['ll']:.2f}  iters={info['iters']}  "
+                              f"conv={info['converged']}  ({dt:.1f}s)", flush=True)
+                    else:
+                        print(f"    K={K} {status} ({dt:.1f}s)", flush=True)
+        else:
+            for task in tasks:
+                K = task[2]
+                print(f"  TRAIN {cache_path(name, K)}", flush=True)
+                K_, status, info, dt = _train_one_K(task)
+                if status == 'OK':
+                    print(f"    LL_tot={info['ll']:.2f}  iters={info['iters']}  "
+                          f"converged={info['converged']}  ({dt:.1f}s)", flush=True)
+                gc.collect()
 
         del obs
         gc.collect()

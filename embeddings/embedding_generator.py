@@ -102,6 +102,9 @@ class EmbeddingGenerator(nn.Module):
         self.projection_gamma = nn.Linear(K, d_model // 2)    # info regimen
         self.norm_split = nn.LayerNorm(d_model)
 
+        # Mover TODO el modulo (buffers + projections) al device pedido
+        self.to(device)
+
     def forward(self, tokens) -> torch.Tensor:
         """
         Convierte tokens HARD (Viterbi) en embeddings.

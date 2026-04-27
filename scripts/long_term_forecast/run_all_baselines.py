@@ -124,6 +124,8 @@ def parse_args():
     ap.add_argument('--skip-cross-domain', action='store_true',
                     help='excluye Traffic y Exchange (mantiene solo in-domain Plan B: ETTh1/ETTh2/Weather/ECL)')
     ap.add_argument('--dry-run', action='store_true', help='solo imprime, no ejecuta')
+    ap.add_argument('--use-gpu', type=int, default=None,
+                    help='Override --use_gpu en cada invocacion (1=GPU, 0=CPU). Default: lo que diga el .sh.')
     return ap.parse_args()
 
 
@@ -187,6 +189,10 @@ def main():
             skipped += 1
             print(f'[{done}/{len(all_invocations)}] SKIP {tag}', flush=True)
             continue
+
+        # Override use_gpu si la flag CLI lo pide
+        if args.use_gpu is not None:
+            inv['use_gpu'] = str(args.use_gpu)
 
         # Reconstruir cmd
         cmd = [sys.executable, '-u', 'run.py']

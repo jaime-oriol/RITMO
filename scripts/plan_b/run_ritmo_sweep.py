@@ -34,7 +34,7 @@ def result_already_exists(tag: str) -> bool:
     return False
 
 
-def build_cmd(ds, variant, K, pred_len):
+def build_cmd(ds, variant, K, pred_len, use_gpu=0):
     tag = experiment_tag(ds['name'], variant, K, pred_len)
     cp = cache_path(ds['name'], K)
     return tag, cp, [
@@ -50,7 +50,7 @@ def build_cmd(ds, variant, K, pred_len):
         '--batch_size', str(ds['batch_size']),
         '--learning_rate', '0.001', '--lradj', 'cosine',
         '--train_epochs', str(ds['train_epochs']), '--patience', '7',
-        '--use_gpu', '0', '--num_workers', '0',
+        '--use_gpu', str(use_gpu), '--num_workers', '0',
         '--technique', variant, '--hmm_k', str(K),
         '--hmm_cache_path', cp,
         '--des', tag, '--itr', '1',
@@ -66,6 +66,8 @@ def parse_args():
     ap.add_argument('--variants', nargs='*', default=None)
     ap.add_argument('--ks', nargs='*', type=int, default=None,
                     help='Override manual de K values. Default: los de plan_b_config por dataset.')
+    ap.add_argument('--use-gpu', type=int, default=0,
+                    help='1 para GPU, 0 para CPU. Default 0.')
     return ap.parse_args()
 
 
@@ -106,7 +108,7 @@ def main():
                 continue
             for variant in variants:
                 for pred_len in horizons:
-                    tag, _, cmd = build_cmd(ds, variant, K, pred_len)
+                    tag, _, cmd = build_cmd(ds, variant, K, pred_len, use_gpu=args.use_gpu)
                     if result_already_exists(tag):
                         skipped += 1
                         print(f"[plan_b-sweep] SKIP {tag}", flush=True)
