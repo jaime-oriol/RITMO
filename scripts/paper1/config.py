@@ -96,17 +96,6 @@ def hmm_cache_path(dataset_name: str, K: int, seed: int) -> str:
     """Ruta canónica de cache HMM univariante con seed explícita.
 
     Naming: cache/hmm_{dataset_lower}_K{k}_seed{s}.pth
-    La cache sin sufijo seed (cache/hmm_{ds}_K{k}.pth) corresponde a seed=42.
     """
     ds_key = dataset_name.lower()
-    # Electricity usa 'custom' como data_arg pero el cache se llama 'electricity' para claridad.
     return f"./cache/hmm_{ds_key}_K{K}_seed{seed}.pth"
-
-
-def hmm_cache_path_legacy(dataset_name: str, K: int) -> str:
-    """Cache legacy sin sufijo seed (seed=42 implícita). Usada por scripts previos."""
-    ds_key = dataset_name.lower()
-    # Note: Electricity era 'custom' en los caches legacy del TFG.
-    if dataset_name == 'Electricity':
-        return f"./cache/hmm_custom_K{K}.pth"
-    return f"./cache/hmm_{ds_key}_K{K}.pth"

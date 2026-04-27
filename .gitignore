@@ -43,3 +43,5 @@ results/**/true.npy
 test_results/
 # Logs de ejecucion.
 logs/
+# Log append-only escrito por exp/exp_plan_a.py al testear.
+result_plan_a.txt

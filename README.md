@@ -100,10 +100,7 @@ RITMO/
 │   ├── patching.py                #   PatchTST (Nie et al., 2023)
 │   ├── decomposition.py           #   Autoformer/DLinear (Wu et al., 2021)
 │   ├── foundation.py              #   MOMENT (Goswami et al., 2024)
-│   ├── metrics.py                 #   Metricas intrinsecas de tokenizacion
-│   ├── ETTh2_tokenization.ipynb   #   Visualizaciones de las 6 tecnicas en ETTh2
-│   ├── comparacion_metricas.ipynb #   Comparacion de metricas intrinsecas
-│   └── figures/                   #   Figuras exportadas
+│   └── metrics.py                 #   Metricas intrinsecas de tokenizacion
 │
 ├── models/                        # Backbones neuronales
 │   ├── __init__.py
@@ -124,8 +121,9 @@ RITMO/
 ├── exp/                           # Clases de experimentacion
 │   ├── __init__.py
 │   ├── exp_basic.py               #   Clase base (device, registro de modelos)
-│   ├── exp_plan_a.py              #   Plan A: comparacion controlada 6+ tecnicas
-│   └── exp_long_term_forecasting.py  # Plan B: baselines SOTA
+│   ├── exp_plan_a.py              #   Plan A / Paper-1: tecnicas vs HMM (univariante)
+│   ├── exp_plan_b.py              #   Plan B: HMM-M (multivariante)
+│   └── exp_long_term_forecasting.py  # Baselines SOTA
 │
 ├── data_provider/                 # Carga y procesamiento de datos
 │   ├── __init__.py
@@ -144,57 +142,55 @@ RITMO/
 │   ├── dtw_metric.py              #   Dynamic Time Warping
 │   └── print_args.py              #   Pretty-print de argumentos
 │
-├── notebooks/                     # Notebooks de experimentacion
+├── notebooks/                     # Notebooks de pipeline + Paper-1 + Plan B
 │   ├── pipeline_RITMO_etth2.ipynb #   Validacion 4 fases del pipeline
-│   ├── k_sweep.ipynb              #   Barrido K por dataset (caches HMM)
-│   ├── visualizations.ipynb       #   Agregacion de resultados Plan A
-│   ├── final_results.ipynb        #   Compilacion final de metricas
-│   ├── zero_shot.ipynb            #   Transfer zero-shot a Traffic/Exchange
 │   ├── eda_datasets.ipynb         #   EDA de los 6 datasets
-│   ├── eda_datasets.py            #   Script EDA exportable
-│   ├── patch_savefig_to_vector.py #   Convertir figuras a formato vectorial
-│   ├── fix_svgs_maxquality.py     #   Optimizacion SVG
-│   ├── fase1_revin_etth2.{pdf,png,svg}       # Fase 1: RevIN
-│   ├── fase2_baum_welch_etth2.{pdf,png,svg}  # Fase 2: Baum-Welch
-│   ├── fase3_viterbi_etth2.{pdf,png,svg}     # Fase 3: Viterbi
-│   ├── fase4_embeddings_etth2.{pdf,png,svg}  # Fase 4: Embeddings
-│   ├── figures/                   #   Figuras Plan A
-│   └── figures_eda/               #   Figuras EDA
+│   ├── eda_datasets.py            #   Pareja jupytext de eda_datasets.ipynb
+│   ├── paper1_runner.ipynb        #   Lanzador fases 2-5 Paper-1
+│   ├── paper1_final_results.ipynb #   Agregacion downstream multi-seed (Phase 3)
+│   ├── paper1_intrinsic_results.ipynb # Agregacion metricas intrinsecas (Phase 5)
+│   ├── paper1_figures.{ipynb,py}  #   Figuras del paper draft
+│   ├── k_sweep_plan_b.ipynb       #   K-sweep RITMO-M (HMM multivariante)
+│   ├── final_results_plan_b.ipynb #   Plan B vs baselines SOTA in-domain
+│   ├── fase{1..4}_*_etth2.svg     #   Figuras pipeline RITMO
+│   └── figures_eda/               #   Figuras EDA (.svg)
 │
-├── scripts/                       # Scripts shell de ejecucion
-│   ├── plan_a/
-│   │   └── test_hmm_soft.sh       #   Barrido K para hmm_soft (Plan A)
-│   └── long_term_forecast/        # Baselines SOTA (Plan B)
-│       ├── ETT_script/            #   7 scripts (PatchTST, DLinear, TimeMixer,
-│       │                          #              TimeXer) sobre ETTh1 y ETTh2
-│       ├── ECL_script/            #   4 scripts (DLinear, PatchTST, TimeMixer, TimeXer)
-│       ├── Weather_script/        #   3 scripts (PatchTST, TimeMixer, TimeXer)
-│       ├── Traffic_script/        #   Scripts Traffic
-│       └── Exchange_script/       #   Scripts Exchange
+├── scripts/
+│   ├── long_term_forecast/        # Baselines SOTA (.sh + wrapper)
+│   │   ├── ETT_script/            #   8 .sh (4 baselines x ETTh1/ETTh2)
+│   │   ├── ECL_script/            #   4 .sh (4 baselines x Electricity)
+│   │   ├── Weather_script/        #   4 .sh
+│   │   ├── Traffic_script/        #   3 .sh (cross-domain)
+│   │   ├── Exchange_script/       #   1 .sh (cross-domain)
+│   │   └── run_all_baselines.py   #   Wrapper resumible (--skip-cross-domain)
+│   ├── paper1/                    # Pipeline 6 fases multi-seed
+│   │   ├── config.py              #   SEEDS, K_VALUES, DATASETS, hmm_cache_path
+│   │   ├── k_optimal.json         #   K optimo por dataset post-Phase 2
+│   │   ├── phase1_train_hmm_seeds.py
+│   │   ├── phase2_k_sweep_seeds.py
+│   │   ├── phase3_plan_a_seeds.py
+│   │   ├── phase4_cross_domain_seeds.py
+│   │   ├── phase5_intrinsic_metrics.py
+│   │   ├── phase6_ablation.py
+│   │   └── verify_hmm_convergence.py
+│   └── plan_b/                    # HMM multivariante
+│       ├── plan_b_config.py
+│       ├── train_hmm_caches.py    #   Caches HMM-M
+│       └── run_ritmo_sweep.py     #   K-sweep RITMO-M downstream
 │
-├── cache/                         # Parametros HMM entrenados (32 archivos)
-│   └── hmm_{etth1,etth2,weather,custom}_K{3-10}.pth
+├── cache/                         # 122 caches HMM
+│   ├── hmm_{ds}_K{k}_seed{s}.pth  #   Univariante Paper-1 (4 ds x 8 K x 3 seeds)
+│   └── hmm_M_{ds}_K{k}.pth        #   Multivariante Plan B
 │
-├── results/                       # Metricas y predicciones por experimento
-│   └── plan_a_{dataset}_..._{technique}_{K}_0/
-│       ├── metrics.npy            #   np.array([MAE, MSE, RMSE, MAPE, MSPE])
-│       ├── pred.npy               #   Predicciones [N, pred_len, 1]
-│       └── true.npy               #   Ground truth [N, pred_len, 1]
+├── results/                       # Metricas por experimento (697 dirs)
+│   ├── plan_a_*_ksweep_paper1_*_seed*_0/   # Phase 2 (192)
+│   ├── plan_a_*_final_paper1_*_seed*_0/    # Phase 3 (288)
+│   ├── plan_a_*_crossdom_paper1_*_seed*_0/ # Phase 4 (216)
+│   └── paper1_intrinsic/          #   Phase 5 (12 JSONs)
 │
-├── test_results/                  # Visualizaciones de predicciones (PDFs)
-│   └── plan_a_{...}/*.pdf         #   Plots input + pred + ground truth
-│
-├── checkpoints/                   # Pesos de modelos entrenados (.pth)
-│
-├── referencias/                   # Papers organizados por categoria (PDFs)
-│   ├── 1-Tecnicas/                #   Discretizacion, Patching, Decomp,
-│   │                              #   Foundation models, Text-based
-│   ├── 2-Transformer-Baselines/   #   Informer, TimesNet, TimeMixer, TimeXer
-│   ├── 3-Surveys/                 #   Surveys LLMs + Time Series
-│   ├── 4-Preprocesamiento/        #   RevIN, Non-stationary Transformers
-│   ├── 5-HMM/                     #   Rabiner, Hamilton, Baum-Welch, sticky HDP-HMM
-│   ├── 6-Datasets/                #   Accuracy Law, Long-Short patterns
-│   └── 7-Evaluacion-token/        #   Metricas de evaluacion de tokenizacion
+├── test_results/                  # PDFs visualizacion por-muestra (gitignored)
+├── checkpoints/                   # Pesos Transformer entrenados (gitignored)
+├── logs/                          # Logs ejecucion (gitignored)
 │
 ├── tutorial/                      # Tutorial TSLib original (referencia)
 │   ├── TimesNet_tutorial.ipynb
@@ -206,8 +202,6 @@ RITMO/
 │
 ├── run.py                         # Entry point principal (CLI unificado TSLib)
 ├── environment.yml                # Entorno Conda (USAR ESTE)
-├── requirements.txt               # Requirements pip (alternativa)
-├── result_plan_a.txt              # Log agregado de experimentos Plan A
 ├── .gitignore
 └── README.md
 ```
@@ -294,9 +288,10 @@ bash scripts/long_term_forecast/Weather_script/TimeMixer.sh
 ### 4. Validar pipeline y explorar resultados
 
 ```bash
-jupyter notebook notebooks/pipeline_RITMO_etth2.ipynb  # Validacion 4 fases
-jupyter notebook notebooks/k_sweep.ipynb               # Barrido K
-jupyter notebook notebooks/visualizations.ipynb        # Agregacion resultados
+jupyter notebook notebooks/pipeline_RITMO_etth2.ipynb     # Validacion 4 fases
+jupyter notebook notebooks/paper1_runner.ipynb            # Lanzador fases Paper-1
+jupyter notebook notebooks/paper1_final_results.ipynb     # Agregacion downstream
+jupyter notebook notebooks/paper1_intrinsic_results.ipynb # Metricas intrinsecas
 ```
 
 ## Configuracion experimental

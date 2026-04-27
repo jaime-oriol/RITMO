@@ -87,7 +87,7 @@ CACHE_DIR = BASE_DIR / 'cache'
 
 # HMM cache ETTh2 K=5 (illustrative)
 K_SELECTED = 5
-cache_path = CACHE_DIR / f'hmm_etth2_K{K_SELECTED}.pth'
+cache_path = CACHE_DIR / f'hmm_etth2_K{K_SELECTED}_seed42.pth'
 hmm_cache = torch.load(cache_path, weights_only=False)
 print(f'[CACHE HMM ETTh2] K={K_SELECTED}, converged={hmm_cache["converged"]}, iters={hmm_cache["n_iter"]}')
 
@@ -822,7 +822,7 @@ plt.show()
 from hmm import forward_backward_batch
 
 # Load Weather K=4 cache (paper-optimal robust)
-cache_w = torch.load(REPO / 'cache/hmm_weather_K4.pth', weights_only=False)
+cache_w = torch.load(REPO / 'cache/hmm_weather_K4_seed42.pth', weights_only=False)
 A = cache_w['A'].numpy() if isinstance(cache_w['A'], torch.Tensor) else cache_w['A']
 pi = cache_w['pi'].numpy() if isinstance(cache_w['pi'], torch.Tensor) else cache_w['pi']
 mu = cache_w['mu'].numpy() if isinstance(cache_w['mu'], torch.Tensor) else cache_w['mu']

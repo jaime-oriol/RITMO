@@ -1,8 +1,6 @@
 """Fase 1 del Paper-1: entrenar HMM univariante K={3..10} x 3 seeds por dataset.
 
 Naming canónico de salida: cache/hmm_{dataset_lower}_K{k}_seed{s}.pth
-Las cache legacy (cache/hmm_{dataset_lower}_K{k}.pth, seed=42) se copian al
-naming con sufijo seed42 y no se re-entrenan.
 
 Resumible: salta cache ya existentes. Log por línea en stdout.
 
@@ -15,7 +13,6 @@ Uso:
 import argparse
 import gc
 import os
-import shutil
 import sys
 import time
 from pathlib import Path
@@ -28,7 +25,7 @@ os.chdir(REPO_ROOT)
 sys.path.insert(0, str(REPO_ROOT))
 
 from scripts.paper1.config import (  # noqa: E402
-    DATASETS, K_VALUES, SEEDS, hmm_cache_path, hmm_cache_path_legacy,
+    DATASETS, K_VALUES, SEEDS, hmm_cache_path,
 )
 from hmm.baum_welch import baum_welch  # noqa: E402
 from hmm.checkpoint import save_hmm_params  # noqa: E402
@@ -75,22 +72,6 @@ def load_train_normalized(ds_cfg):
         m, s = w.mean(), max(w.std(), 1e-5)
         windows.append((w - m) / s)
     return np.concatenate(windows)
-
-
-def promote_legacy_cache(dataset_name: str, K: int) -> bool:
-    """Si existe la cache legacy (seed=42 implícita), la copia al naming con _seed42.
-
-    Returns True si la cache de seed=42 queda disponible tras la operación.
-    """
-    target = hmm_cache_path(dataset_name, K, 42)
-    legacy = hmm_cache_path_legacy(dataset_name, K)
-    if Path(target).exists():
-        return True
-    if Path(legacy).exists():
-        shutil.copy2(legacy, target)
-        print(f"  COPY {legacy} -> {target}", flush=True)
-        return True
-    return False
 
 
 def train_one(dataset_name: str, obs: np.ndarray, K: int, seed: int, dry: bool = False) -> dict:
@@ -155,12 +136,6 @@ def main():
         name = ds['name']
         print(f"\n[paper1-phase1] === {name} ===", flush=True)
 
-        # Primero: promocionar caches legacy (seed=42).
-        for K in ks:
-            if 42 in seeds and promote_legacy_cache(name, K):
-                # No cuenta como "trained" ni como "skipped"; se contabiliza aparte.
-                pass
-
         # Cargar datos una vez por dataset (lazy: solo si hay algo que entrenar).
         obs = None
 
@@ -171,8 +146,6 @@ def main():
 
                 if Path(cp).exists():
                     skipped += 1
-                    # Solo print si no es legacy recién copiada (para no spam).
-                    # Mostramos siempre para claridad.
                     print(f"[{done}/{total}] SKIP {cp}", flush=True)
                     continue
 

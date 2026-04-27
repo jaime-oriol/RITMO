@@ -1,6 +1,6 @@
-export CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES=1
 
-model_name=TimeXer
+model_name=DLinear
 
 python -u run.py \
   --task_name long_term_forecast \
@@ -14,15 +14,13 @@ python -u run.py \
   --seq_len 96 \
   --label_len 48 \
   --pred_len 96 \
-  --e_layers 1 \
+  --e_layers 2 \
+  --d_layers 1 \
   --factor 3 \
   --enc_in 21 \
   --dec_in 21 \
   --c_out 21 \
   --des 'Exp' \
-  --d_model 256 \
-  --d_ff 512 \
-  --batch_size 4 \
   --itr 1
 
 python -u run.py \
@@ -37,15 +35,13 @@ python -u run.py \
   --seq_len 96 \
   --label_len 48 \
   --pred_len 192 \
-  --e_layers 3 \
+  --e_layers 2 \
+  --d_layers 1 \
   --factor 3 \
   --enc_in 21 \
   --dec_in 21 \
   --c_out 21 \
   --des 'Exp' \
-  --d_model 128 \
-  --d_ff 1024 \
-  --batch_size 4 \
   --itr 1
 
 python -u run.py \
@@ -60,14 +56,13 @@ python -u run.py \
   --seq_len 96 \
   --label_len 48 \
   --pred_len 336 \
-  --e_layers 1 \
+  --e_layers 2 \
+  --d_layers 1 \
   --factor 3 \
   --enc_in 21 \
   --dec_in 21 \
   --c_out 21 \
   --des 'Exp' \
-  --d_model 256 \
-  --batch_size 4 \
   --itr 1
 
 python -u run.py \
@@ -82,12 +77,11 @@ python -u run.py \
   --seq_len 96 \
   --label_len 48 \
   --pred_len 720 \
-  --e_layers 1 \
+  --e_layers 2 \
+  --d_layers 1 \
   --factor 3 \
   --enc_in 21 \
   --dec_in 21 \
   --c_out 21 \
   --des 'Exp' \
-  --d_model 128 \
-  --batch_size 4 \
   --itr 1
