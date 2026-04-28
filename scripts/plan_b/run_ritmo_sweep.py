@@ -97,40 +97,54 @@ def main():
           f"variants={variants} horizons={horizons} total_expected={total_runs}",
           flush=True)
 
-    for ds in datasets:
-        Ks = args.ks if args.ks else K_VALUES_BY_DATASET[ds['name']]
-        for K in Ks:
-            cp = cache_path(ds['name'], K)
-            if not Path(cp).exists():
-                print(f"[plan_b-sweep] AVISO: falta cache {cp}. Correr train_hmm_caches.py antes.",
-                      flush=True)
-                failed += len(variants) * len(horizons)
-                continue
-            for variant in variants:
-                for pred_len in horizons:
-                    tag, _, cmd = build_cmd(ds, variant, K, pred_len, use_gpu=args.use_gpu)
-                    if result_already_exists(tag):
-                        skipped += 1
-                        print(f"[plan_b-sweep] SKIP {tag}", flush=True)
-                        continue
-                    print(f"\n[plan_b-sweep] RUN {tag}  bs={ds['batch_size']} "
-                          f"ep={ds['train_epochs']}", flush=True)
-                    t0 = time.time()
-                    proc = subprocess.run(cmd, env=env, capture_output=True, text=True)
-                    dt = time.time() - t0
-                    if proc.returncode != 0:
-                        failed += 1
-                        # Imprimir tail de stderr para diagnostico
-                        err_tail = '\n'.join(proc.stderr.strip().splitlines()[-12:])
-                        print(f"[plan_b-sweep] FAIL {tag} ({dt:.1f}s)\n{err_tail}",
-                              flush=True)
-                    else:
-                        done += 1
-                        metric_lines = [ln for ln in proc.stdout.splitlines()
-                                        if 'mse:' in ln]
-                        msg = metric_lines[-1] if metric_lines else 'OK'
-                        print(f"[plan_b-sweep] OK {tag} ({dt:.1f}s)  {msg}", flush=True)
-                    gc.collect()
+    def run_pass(label):
+        """Una pasada por todas las (ds, K, variant, pl). Resumible.
+        Dentro de cada dataset, ordena Ks: caches existentes primero, missing al final."""
+        nonlocal done, skipped, failed
+        for ds in datasets:
+            Ks = args.ks if args.ks else K_VALUES_BY_DATASET[ds['name']]
+            # Reordena: K con cache existente primero (rapidos), missing al final (dan tiempo a HMM)
+            Ks = sorted(Ks, key=lambda k: not Path(cache_path(ds['name'], k)).exists())
+            for K in Ks:
+                cp = cache_path(ds['name'], K)
+                if not Path(cp).exists():
+                    print(f"[plan_b-sweep:{label}] AVISO: falta cache {cp}. Saltando esos runs.",
+                          flush=True)
+                    failed += len(variants) * len(horizons)
+                    continue
+                for variant in variants:
+                    for pred_len in horizons:
+                        tag, _, cmd = build_cmd(ds, variant, K, pred_len, use_gpu=args.use_gpu)
+                        if result_already_exists(tag):
+                            skipped += 1
+                            print(f"[plan_b-sweep:{label}] SKIP {tag}", flush=True)
+                            continue
+                        print(f"\n[plan_b-sweep:{label}] RUN {tag}  bs={ds['batch_size']} "
+                              f"ep={ds['train_epochs']}", flush=True)
+                        t0 = time.time()
+                        proc = subprocess.run(cmd, env=env, capture_output=True, text=True)
+                        dt = time.time() - t0
+                        if proc.returncode != 0:
+                            failed += 1
+                            err_tail = '\n'.join(proc.stderr.strip().splitlines()[-12:])
+                            print(f"[plan_b-sweep:{label}] FAIL {tag} ({dt:.1f}s)\n{err_tail}",
+                                  flush=True)
+                        else:
+                            done += 1
+                            metric_lines = [ln for ln in proc.stdout.splitlines()
+                                            if 'mse:' in ln]
+                            msg = metric_lines[-1] if metric_lines else 'OK'
+                            print(f"[plan_b-sweep:{label}] OK {tag} ({dt:.1f}s)  {msg}", flush=True)
+                        gc.collect()
+
+    # Pass 1: el barrido principal
+    run_pass('p1')
+
+    # Pass 2: por si caches faltantes aparecieron mientras corria el sweep (HMM en paralelo)
+    # Solo cuenta runs que falten (resumible). Reset failed para reportar correctamente.
+    failed = 0
+    print(f"\n[plan_b-sweep] === Pass 2 (retry caches que aparecieron durante p1) ===", flush=True)
+    run_pass('p2')
 
     total = done + skipped + failed
     print(f"\n[plan_b-sweep] Fin. done={done} skipped={skipped} failed={failed} "
