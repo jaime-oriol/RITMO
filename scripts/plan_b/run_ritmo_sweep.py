@@ -50,7 +50,7 @@ def build_cmd(ds, variant, K, pred_len, use_gpu=0):
         '--batch_size', str(ds['batch_size']),
         '--learning_rate', '0.001', '--lradj', 'cosine',
         '--train_epochs', str(ds['train_epochs']), '--patience', '7',
-        '--use_gpu', str(use_gpu), '--num_workers', '0',
+        '--use_gpu', str(use_gpu), '--num_workers', '8',
         '--technique', variant, '--hmm_k', str(K),
         '--hmm_cache_path', cp,
         '--des', tag, '--itr', '1',

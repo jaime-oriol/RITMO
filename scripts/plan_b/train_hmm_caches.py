@@ -35,6 +35,7 @@ from scripts.plan_b.plan_b_config import (  # noqa: E402
     DATASETS, K_VALUES_BY_DATASET, SEED, cache_path,
 )
 from hmm import baum_welch_batch  # noqa: E402
+from hmm.baum_welch_v2 import baum_welch_batch_v2  # noqa: E402
 from hmm.checkpoint import save_hmm_params  # noqa: E402
 
 # Limitar threads (WSL-safe, evita oversubscription con numpy/scipy)
@@ -82,16 +83,19 @@ def parse_args():
                     help='Salta Electricity (util si el sweep completo es inviable en CPU).')
     ap.add_argument('--workers', type=int, default=1,
                     help='Procesos paralelos por (K) dentro de cada dataset. Default 1 (secuencial).')
+    ap.add_argument('--v2', action='store_true',
+                    help='Usar baum_welch_batch_v2 (Numba JIT, 25-35x mas rapido).')
     return ap.parse_args()
 
 
 def _train_one_K(args_tuple):
     """Worker para multiprocessing.Pool. Entrena un (dataset, K) y guarda en disco."""
-    name, obs, K, chunk_size, cp = args_tuple
+    name, obs, K, chunk_size, cp, use_v2 = args_tuple
     if Path(cp).exists():
         return (K, 'SKIP', None, 0.0)
     t_k = time.time()
-    params = baum_welch_batch(
+    bw_fn = baum_welch_batch_v2 if use_v2 else baum_welch_batch
+    params = bw_fn(
         obs, K=K, max_iter=2000, epsilon=1e-4,
         random_state=SEED, chunk_size=chunk_size,
         verbose=False,
@@ -137,7 +141,7 @@ def main():
               f"({time.time()-t0:.1f}s loading)", flush=True)
 
         # Lista de tareas (solo Ks que faltan)
-        tasks = [(name, obs, K, ds['hmm_chunk_size'], cache_path(name, K))
+        tasks = [(name, obs, K, ds['hmm_chunk_size'], cache_path(name, K), args.v2)
                  for K in Ks if not Path(cache_path(name, K)).exists()]
         for K in Ks:
             if Path(cache_path(name, K)).exists():

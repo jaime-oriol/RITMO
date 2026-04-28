@@ -42,15 +42,15 @@ DATASETS = [
         'name': 'Weather', 'data_arg': 'Weather',
         'root': './dataset/weather/', 'data_path': 'weather.csv',
         'csv': 'dataset/weather/weather.csv',
-        'C': 21, 'freq': 'h', 'batch_size': 16, 'train_epochs': 10,
+        'C': 21, 'freq': 'h', 'batch_size': 32, 'train_epochs': 10,
         'split_type': 'custom', 'hmm_chunk_size': 21,
     },
     {
         'name': 'Electricity', 'data_arg': 'Electricity',
         'root': './dataset/electricity/', 'data_path': 'electricity.csv',
         'csv': 'dataset/electricity/electricity.csv',
-        'C': 321, 'freq': 'h', 'batch_size': 4, 'train_epochs': 5,
-        'split_type': 'custom', 'hmm_chunk_size': 32,
+        'C': 321, 'freq': 'h', 'batch_size': 16, 'train_epochs': 5,
+        'split_type': 'custom', 'hmm_chunk_size': 128,
     },
 ]
 
