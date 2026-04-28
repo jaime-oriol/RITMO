@@ -68,11 +68,19 @@ def parse_args():
                     help='Override manual de K values. Default: los de plan_b_config por dataset.')
     ap.add_argument('--use-gpu', type=int, default=0,
                     help='1 para GPU, 0 para CPU. Default 0.')
+    ap.add_argument('--shard', type=str, default='0/1',
+                    help='X/N: esta instancia procesa solo tasks con (idx %% N == X). '
+                         'Permite lanzar N instancias paralelas sin solapamiento.')
     return ap.parse_args()
 
 
 def main():
     args = parse_args()
+
+    # Parsear --shard X/N
+    shard_x, shard_n = (int(x) for x in args.shard.split('/'))
+    if shard_n < 1 or shard_x < 0 or shard_x >= shard_n:
+        raise ValueError(f"--shard mal formado: {args.shard}")
 
     datasets = DATASETS
     if args.only_dataset:
@@ -99,27 +107,33 @@ def main():
 
     def run_pass(label):
         """Una pasada por todas las (ds, K, variant, pl). Resumible.
-        Dentro de cada dataset, ordena Ks: caches existentes primero, missing al final."""
+        Dentro de cada dataset, ordena Ks: caches existentes primero, missing al final.
+        Si --shard X/N != 0/1, esta instancia procesa solo tasks con (idx %% N == X)."""
         nonlocal done, skipped, failed
+        global_idx = -1
         for ds in datasets:
             Ks = args.ks if args.ks else K_VALUES_BY_DATASET[ds['name']]
-            # Reordena: K con cache existente primero (rapidos), missing al final (dan tiempo a HMM)
             Ks = sorted(Ks, key=lambda k: not Path(cache_path(ds['name'], k)).exists())
             for K in Ks:
                 cp = cache_path(ds['name'], K)
-                if not Path(cp).exists():
-                    print(f"[plan_b-sweep:{label}] AVISO: falta cache {cp}. Saltando esos runs.",
-                          flush=True)
-                    failed += len(variants) * len(horizons)
-                    continue
+                cache_missing = not Path(cp).exists()
                 for variant in variants:
                     for pred_len in horizons:
+                        global_idx += 1
+                        # Filtro shard: solo procesar si pertenece a esta instancia
+                        if global_idx % shard_n != shard_x:
+                            continue
+                        if cache_missing:
+                            print(f"[plan_b-sweep:{label}:s{shard_x}] AVISO: falta cache {cp}",
+                                  flush=True)
+                            failed += 1
+                            continue
                         tag, _, cmd = build_cmd(ds, variant, K, pred_len, use_gpu=args.use_gpu)
                         if result_already_exists(tag):
                             skipped += 1
-                            print(f"[plan_b-sweep:{label}] SKIP {tag}", flush=True)
+                            print(f"[plan_b-sweep:{label}:s{shard_x}] SKIP {tag}", flush=True)
                             continue
-                        print(f"\n[plan_b-sweep:{label}] RUN {tag}  bs={ds['batch_size']} "
+                        print(f"\n[plan_b-sweep:{label}:s{shard_x}] RUN {tag}  bs={ds['batch_size']} "
                               f"ep={ds['train_epochs']}", flush=True)
                         t0 = time.time()
                         proc = subprocess.run(cmd, env=env, capture_output=True, text=True)
@@ -127,14 +141,14 @@ def main():
                         if proc.returncode != 0:
                             failed += 1
                             err_tail = '\n'.join(proc.stderr.strip().splitlines()[-12:])
-                            print(f"[plan_b-sweep:{label}] FAIL {tag} ({dt:.1f}s)\n{err_tail}",
+                            print(f"[plan_b-sweep:{label}:s{shard_x}] FAIL {tag} ({dt:.1f}s)\n{err_tail}",
                                   flush=True)
                         else:
                             done += 1
                             metric_lines = [ln for ln in proc.stdout.splitlines()
                                             if 'mse:' in ln]
                             msg = metric_lines[-1] if metric_lines else 'OK'
-                            print(f"[plan_b-sweep:{label}] OK {tag} ({dt:.1f}s)  {msg}", flush=True)
+                            print(f"[plan_b-sweep:{label}:s{shard_x}] OK {tag} ({dt:.1f}s)  {msg}", flush=True)
                         gc.collect()
 
     # Pass 1: el barrido principal
