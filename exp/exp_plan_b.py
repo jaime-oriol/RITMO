@@ -31,6 +31,7 @@ from utils.tools import EarlyStopping, adjust_learning_rate, visual
 from utils.metrics import metric
 from layers.StandardNorm import Normalize
 from hmm import viterbi_batch, forward_backward_batch
+from hmm.forward_backward_torch import HMMForwardBackwardGPU
 from embeddings import EmbeddingGenerator
 
 warnings.filterwarnings('ignore')
@@ -122,6 +123,8 @@ class Exp_Plan_B(Exp_Basic):
         self._hmm_mu = self._as_numpy(hmm_params['mu'])
         self._hmm_sigma = self._as_numpy(hmm_params['sigma'])
         self._hmm_cache_path = cache_path
+        if self.device != 'cpu':
+            self._hmm_fb = HMMForwardBackwardGPU(hmm_params, device=self.device)
 
     @staticmethod
     def _as_numpy(x):
@@ -150,11 +153,9 @@ class Exp_Plan_B(Exp_Basic):
     # Pipeline core (channel-independence)
     # ------------------------------------------------------------------
     def _flatten_channels(self, batch_x_norm):
-        """[B, L, C] -> [B*C, L] (numpy) preservando orden row-major por canal."""
-        # permute a [B, C, L] -> [B*C, L]
+        """[B, L, C] -> [B*C, L] tensor on device."""
         B, L, C = batch_x_norm.shape
-        flat = batch_x_norm.permute(0, 2, 1).contiguous().view(B * C, L)
-        return flat.detach().cpu().numpy()
+        return batch_x_norm.permute(0, 2, 1).contiguous().view(B * C, L)
 
     def _tokenize_embed_flat(self, batch_x_norm):
         """Tokeniza + embed con channel-independence.
@@ -162,9 +163,10 @@ class Exp_Plan_B(Exp_Basic):
         Devuelve embeddings [B*C, seq_len_out, d_model] listos para TransformerCommon.
         """
         B, L, C = batch_x_norm.shape
-        flat_np = self._flatten_channels(batch_x_norm)  # [B*C, L]
+        flat = self._flatten_channels(batch_x_norm)  # [B*C, L] on device
 
         if self.technique == 'hmm':
+            flat_np = flat.detach().cpu().numpy()
             states = viterbi_batch(
                 flat_np, self._hmm_A, self._hmm_pi, self._hmm_mu, self._hmm_sigma,
             )  # [B*C, L]
@@ -172,18 +174,29 @@ class Exp_Plan_B(Exp_Basic):
             raw = self.embedder.embedding_table[states_t]  # [B*C, L, 2+K]
             return self.embedder.projection(raw)
 
-        # Rutas gamma-based
-        gamma, _, _ = forward_backward_batch(
-            flat_np, self._hmm_A, self._hmm_pi, self._hmm_mu, self._hmm_sigma,
-        )  # [B*C, L, K]
-        gamma_t = torch.from_numpy(gamma).float().to(self.device)
+        # Rutas gamma-based — HMM es tokenizador fijo, sin gradientes
+        if self.device != 'cpu':
+            try:
+                with torch.no_grad():
+                    gamma_t = self._hmm_fb(flat)  # [B*C, L, K] — GPU path
+            except Exception as e:
+                print(f"[exp_plan_b] GPU HMM FAILED: {type(e).__name__}: {e}. Falling back to CPU numpy.", flush=True)
+                gamma, _, _ = forward_backward_batch(
+                    flat.detach().cpu().numpy(), self._hmm_A, self._hmm_pi, self._hmm_mu, self._hmm_sigma,
+                )
+                gamma_t = torch.from_numpy(gamma).float().to(self.device)
+        else:
+            gamma, _, _ = forward_backward_batch(
+                flat.detach().cpu().numpy(), self._hmm_A, self._hmm_pi, self._hmm_mu, self._hmm_sigma,
+            )
+            gamma_t = torch.from_numpy(gamma).float().to(self.device)
 
         if self.technique == 'hmm_soft':
             raw = torch.matmul(gamma_t, self.embedder.embedding_table)
             return self.embedder.projection(raw)
 
         # Tecnicas que requieren x crudo normalizado ademas de gamma
-        x_t = torch.from_numpy(flat_np).float().to(self.device)  # [B*C, L]
+        x_t = flat.detach()  # desacoplar del grafo: HMM tokenization no entrena sobre input raw
 
         if self.technique == 'hmm_soft_residual':
             mu_soft = torch.matmul(gamma_t, self.embedder.mu)
