@@ -50,3 +50,6 @@ _runpod_results/
 # PDFs de papers de terceros: no redistribuir en repo publico.
 referencias/
 Referencias/
+
+# Prompts/docs privados de investigacion (no trackear)
+my_docs/
