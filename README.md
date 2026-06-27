@@ -68,7 +68,7 @@ Requirements: Python 3.10, Conda.
 
 ```bash
 conda env create -f environment.yml
-conda activate ritmo
+conda activate ds
 python -c "from hmm import baum_welch, viterbi_decode; print('HMM OK')"
 python -c "from embeddings import EmbeddingGenerator; print('Embeddings OK')"
 python -c "from models import TransformerCommon, DLinear, PatchTST; print('Models OK')"

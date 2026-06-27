@@ -174,7 +174,7 @@ def main():
     except ImportError:
         print(f'\n[baselines] ERROR: torch NO encontrado en {sys.executable}\n'
               f'  Activa conda primero:\n'
-              f'  source ~/anaconda3/etc/profile.d/conda.sh && conda activate ritmo\n'
+              f'  source ~/anaconda3/etc/profile.d/conda.sh && conda activate ds\n'
               f'  Luego re-lanza este script.', flush=True)
         return
 
